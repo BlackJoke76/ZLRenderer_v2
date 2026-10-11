@@ -37,7 +37,9 @@ Debug 的 Win32 窗口验收通过：标题/可见性、移动到 (100,100)、�
 
 Git 交付已核实：工程提交 [`ffa2f73065111b18d346934f11ee7772bc4639df`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/ffa2f73065111b18d346934f11ee7772bc4639df) 已推送，`git ls-remote` 与 GitHub API 的 main SHA 均一致。分支 `main`，upstream `origin/main`，origin 为 `https://github.com/BlackJoke76/ZLRenderer_v2.git`。任务完成状态和本交接记录随单独的 `docs(initialize-vulkan)` 提交保存，最终文档 SHA 以 Git 历史为准。本地 `.agents/` 与两个预存 `.gitkeep` 未暂存；既有 bootstrap 归档不变。
 
-后续：用户请求 verify 时复核；请求 archive 时同步 `vulkan-context` 主规格后归档。当前 change 保持 active，现有两个主规格未改写。
+2026-10-11，`openspec-verify-change` 已复核：14/14 任务、6/6 新要求、13 个场景均有实现与验证依据，6 项设计决策及代码一致性检查通过；0 critical / warning / suggestion。复跑 Debug/Release 编译，各 10/10 CTest 和真实窗口验收通过；新窗口原始日志在 `build-vulkan-clean/verify-logs/<配置>/`。分族按设计使用合成输入及代码核对；本机仍只实际验证族 0。完整报告在 `openspec/changes/initialize-vulkan/verification.md`，此次仅增加报告和交接记录。
+
+后续：用户请求 archive 时同步 `vulkan-context` 主规格后归档。当前 change 保持 active，现有两个主规格未改写。
 
 ## bootstrap-project 历史记录
 

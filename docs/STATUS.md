@@ -1,6 +1,6 @@
 # 实际进度
 
-当前 change：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，尚未归档。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。
+最近完成：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，已归档至 `openspec/changes/archive/2026-10-11-initialize-vulkan/`。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。
 
 本次 `vulkaninfoSDK.exe --summary` 原始输出保存在 `build/vulkanBaseline.log`，包含 `VK_LAYER_GAMEPP uses API version 1.3 ... application ... 1.4` 的 loader WARNING。提案探测还曾出现旧 AMD ICD JSON 路径无法打开、EOS Overlay Win64/Win32 重复的 loader 消息；本次 summary 未复现，不能将这些环境诊断归为应用生命周期错误，也不将未复现视为系统已修复。
 
@@ -37,9 +37,11 @@ Debug 的 Win32 窗口验收通过：标题/可见性、移动到 (100,100)、�
 
 Git 交付已核实：工程提交 [`ffa2f73065111b18d346934f11ee7772bc4639df`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/ffa2f73065111b18d346934f11ee7772bc4639df) 已推送，`git ls-remote` 与 GitHub API 的 main SHA 均一致。分支 `main`，upstream `origin/main`，origin 为 `https://github.com/BlackJoke76/ZLRenderer_v2.git`。任务完成状态和本交接记录随单独的 `docs(initialize-vulkan)` 提交保存，最终文档 SHA 以 Git 历史为准。本地 `.agents/` 与两个预存 `.gitkeep` 未暂存；既有 bootstrap 归档不变。
 
-2026-10-11，`openspec-verify-change` 已复核：14/14 任务、6/6 新要求、13 个场景均有实现与验证依据，6 项设计决策及代码一致性检查通过；0 critical / warning / suggestion。复跑 Debug/Release 编译，各 10/10 CTest 和真实窗口验收通过；新窗口原始日志在 `build-vulkan-clean/verify-logs/<配置>/`。分族按设计使用合成输入及代码核对；本机仍只实际验证族 0。完整报告在 `openspec/changes/initialize-vulkan/verification.md`，此次仅增加报告和交接记录。
+2026-10-11，`openspec-verify-change` 已复核：14/14 任务、6/6 新要求、13 个场景均有实现与验证依据，6 项设计决策及代码一致性检查通过；0 critical / warning / suggestion。复跑 Debug/Release 编译，各 10/10 CTest 和真实窗口验收通过；新窗口原始日志在 `build-vulkan-clean/verify-logs/<配置>/`。分族按设计使用合成输入及代码核对；本机仍只实际验证族 0。完整报告现位于 `openspec/changes/archive/2026-10-11-initialize-vulkan/verification.md`。复核记录提交 `e28bfeb43366f0b541476aa8c655c818d3dd936c` 已推送至 main。
 
-后续：用户请求 archive 时同步 `vulkan-context` 主规格后归档。当前 change 保持 active，现有两个主规格未改写。
+2026-10-11，沿用用户“同步主规格后归档”的选择，新增 `openspec/specs/vulkan-context/spec.md`，保留 delta 的 Purpose、6 条要求及 13 个场景原文，仅规范主规格标题和 Requirements 分区。同步前后逐项内容比较一致，`openspec validate --specs --strict` 三份主规格全部通过。归档前 change 的严格校验通过；移动后的 6 个文件（包括 metadata 和 verification）SHA256 均不变，`openspec list --json` 的 active changes 已为空，无未完成任务/材料警告。
+
+归档和主规格更新纳入独立 `initialize-vulkan` 文档提交，目标为已核实的 `main` / `origin/main`；提交及远程 SHA 以 Git 历史和交付结果为准。当前无 active change；已有窗口/入门主规格和 bootstrap 归档保持原样。后续 swapchain/MAILBOX 与首帧需新建 change。
 
 ## bootstrap-project 历史记录
 

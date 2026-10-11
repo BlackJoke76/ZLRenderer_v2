@@ -27,7 +27,7 @@
 
 - [x] 5.1 确认用户指定的 BlackJoke76/ZLRenderer_v2 仓库与 GitHub 认证；目标已存在且为 PUBLIC，复用而不重复创建，保留 LICENSE 和历史；核实仓库 URL、main 分支和 HTTPS remote（用户已授权）。
 - [x] 5.2 核实当前分支、remote/upstream，更新交接记录并只暂存本 change 相关文件；创建含 bootstrap-project 名称的独立提交，以 staged diff 和提交 SHA 验证范围。
-- [ ] 5.3 推送到已确认目标并设置或核实 upstream；比较本地与远程 SHA，报告目标分支、验证结果、推送状态和 GitHub 提交链接，失败时记录实际状态。
+- [x] 5.3 推送到已确认目标并设置或核实 upstream；比较本地与远程 SHA，报告目标分支、验证结果、推送状态和 GitHub 提交链接，失败时记录实际状态。
 
 ## Workflow follow-up
 

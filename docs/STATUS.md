@@ -1,6 +1,6 @@
 # 实际进度
 
-当前 change：`bootstrap-project`，本地功能验收通过，待 Git 提交与远程同步。
+当前 change：`bootstrap-project`，本地功能验收通过，工程提交已推送 main；尚未归档。
 
 ## 环境
 
@@ -29,4 +29,6 @@ OpenSpec schema 读取在本机 Windows 沙箱内会因 realpath EPERM 失败，
 GitHub 目标为 https://github.com/BlackJoke76/ZLRenderer_v2（PUBLIC），仓库已存在，复用并保留其 MIT LICENSE。
 用户已授权接到远程 main 历史并改用 HTTPS；本地分支 main，origin 为该 HTTPS URL。原远程提交为 `20132ca888504f4e0f73b8dfe5369686340e6187`。
 SSH 原因是 host key verification 失败；未更改用户 SSH 设置。
-本 change 提交与推送待执行。预先存在的 `.agents/` 本地技能文件保留，未纳入本 change 提交。
+工程提交 `98a9a62f0b36bcf1cd12eaae0dae49274106351e` 已成功推送到 `origin/main`，远程 SHA 核对一致，upstream 为 `origin/main`。
+随后用仅包含本 change 交付记录的文档提交同步任务完成状态；最终提交 SHA 以 Git 历史为准。
+预先存在的 `.agents/` 本地技能文件保留，未纳入本 change 提交。无其他未提交的工程文件。

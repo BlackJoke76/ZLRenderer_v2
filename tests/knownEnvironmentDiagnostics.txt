@@ -1,0 +1,2 @@
+\[Vulkan ERROR\] \[Loader Message\] loader_get_json: Failed to open JSON file C:.*FileRepository.*amdvlk[.]inf_amd64_70e8b8136034f8e5.*amd-vulkan64[.]json
+\[Vulkan WARNING\] \[Loader Message\] Removing layer VK_LAYER_EOS_Overlay [(].*EOSOverlayVkLayer-Win64[.]json[)] because it is a duplicate of VK_LAYER_EOS_Overlay [(].*EOSOverlayVkLayer-Win32[.]json[)]

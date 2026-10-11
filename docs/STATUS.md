@@ -1,6 +1,7 @@
 # 实际进度
 
-当前 change：`bootstrap-project`，本地功能验收通过，工程提交已推送 main；尚未归档。
+已完成 change：`bootstrap-project`，14/14 任务完成，已归档至 `openspec/changes/archive/2026-10-11-bootstrap-project/`。
+`desktop-window` 和 `project-onboarding` 已同步为主规格，各 4 条要求，Purpose 与场景原文保留，严格校验通过。
 
 ## 环境
 
@@ -19,6 +20,7 @@
 - 初始化故障注入（非法平台）与窗口创建故障注入（宽度为 0）均输出 GLFW 错误和应用错误，退出码 1；创建失败时观测到 GLFW 终止。注入仅在忽略的 build 目录复制源码中进行，临时源码已移除；产品源码未加入测试开关，最终 Debug 重建通过。
 - 应用的 MSVC ASan Release 构建与同样窗口验收通过，无 ASan 报告；验证参数 `/EHsc /Zi /fsanitize=address`、链接 `/DEBUG`。GLFW 的 C 源码未被该 C++ 参数插桩。MSVC 不提供 UBSan，本次未运行 UBSan。
 - `openspec validate bootstrap-project --strict` 通过。命名、资源释放顺序和文档已对照规格检查。
+- verify 阶段复跑普通 Release 和 Debug 窗口验收、两种失败验证二进制均通过。无阻塞问题；1 项非阻塞警告：CMake 当前固定的 `a74efa0d5628b74adc0426af4c5710e287fa7c2c` 是 GLFW 3.4 的附注 tag 对象 SHA，实际 commit SHA 为 `7b6aead9fb88b3623e3b3725ebb42670cbe4c579`。构建来源仍固定，但 README 称其为“提交”与设计要求的 commit SHA 有描述偏差，后续修订时统一。
 
 上述临时验证脚本和产物在忽略的 build 目录内，不属于发布工程。
 
@@ -31,4 +33,5 @@ GitHub 目标为 https://github.com/BlackJoke76/ZLRenderer_v2（PUBLIC），仓�
 SSH 原因是 host key verification 失败；未更改用户 SSH 设置。
 工程提交 `98a9a62f0b36bcf1cd12eaae0dae49274106351e` 已成功推送到 `origin/main`，远程 SHA 核对一致，upstream 为 `origin/main`。
 随后用仅包含本 change 交付记录的文档提交同步任务完成状态；最终提交 SHA 以 Git 历史为准。
+2026-10-11，用户确认同步主规格后归档；两份主规格与 delta 内容逐项核对一致，active changes 已为空。归档和主规格更新纳入独立 `bootstrap-project` 归档提交，目标仍为 `main` / `origin/main`；同步结果以 Git 历史和远程 SHA 核对为准。
 预先存在的 `.agents/` 本地技能文件保留，未纳入本 change 提交。无其他未提交的工程文件。

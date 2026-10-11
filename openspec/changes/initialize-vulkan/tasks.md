@@ -29,8 +29,8 @@
 
 ## 6. Git 交付
 
-- [ ] 6.1 验收通过后核实 main、origin/upstream 与目标 BlackJoke76/ZLRenderer_v2，更新交接并只暂存本 change 文件；独立提交且信息包含 initialize-vulkan，以 staged diff 和提交 SHA 验证范围，保留其他未跟踪文件与既有归档。
-- [ ] 6.2 推送至已核实的 main，比较本地与远程 SHA，报告提交链接、分支、验证与推送结果；失败时保留本地成果并记录真实状态。
+- [x] 6.1 验收通过后核实 main、origin/upstream 与目标 BlackJoke76/ZLRenderer_v2，更新交接并只暂存本 change 文件；独立提交且信息包含 initialize-vulkan，以 staged diff 和提交 SHA 验证范围，保留其他未跟踪文件与既有归档。
+- [x] 6.2 推送至已核实的 main，比较本地与远程 SHA，报告提交链接、分支、验证与推送结果；失败时保留本地成果并记录真实状态。
 
 ## Workflow follow-up
 

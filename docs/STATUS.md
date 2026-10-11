@@ -1,6 +1,6 @@
 # 实际进度
 
-当前 change：`initialize-vulkan`，实现与运行验收通过，正在完成 Git 交付，尚未归档。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。
+当前 change：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，尚未归档。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。
 
 本次 `vulkaninfoSDK.exe --summary` 原始输出保存在 `build/vulkanBaseline.log`，包含 `VK_LAYER_GAMEPP uses API version 1.3 ... application ... 1.4` 的 loader WARNING。提案探测还曾出现旧 AMD ICD JSON 路径无法打开、EOS Overlay Win64/Win32 重复的 loader 消息；本次 summary 未复现，不能将这些环境诊断归为应用生命周期错误，也不将未复现视为系统已修复。
 
@@ -32,6 +32,12 @@ Debug 的 Win32 窗口验收通过：标题/可见性、移动到 (100,100)、�
 - `build-vulkan-analysis` 使用 `/EHsc /analyze`，三个 C++ 目标静态分析通过，无警告。日志 `static-analysis.log`。首次临时覆盖 CXX_FLAGS 时漏 `/EHsc`，触发 C4530；修正验证参数后通过，普通配置一直使用 CMake 默认异常展开参数。
 - 单次验证进程设置 `VK_LOADER_DEBUG=layer`，原始日志 `build-vulkan-clean/validation-layer-evidence/window.stderr.log` 明确显示 `Insert instance layer "VK_LAYER_KHRONOS_validation"` 和 `Inserted device layer "VK_LAYER_KHRONOS_validation"`，装载 SDK 中实际 DLL；窗口仍完整验收通过。此诊断变量仅属于该进程，未更改系统 layer 设置。
 - 新规格 6 条要求及现有窗口/入门规格逐项核对：正常/失败路径、README 从头配置、强制 validation、公共队列选择与去重、所有权/清理顺序均有上述代码和记录支撑。没有 swapchain、MAILBOX 选择、GPU 提交或等待；既有 AGENTS 约定与 bootstrap 归档未改动。
+
+`openspec validate initialize-vulkan --strict`、工作区与暂存区 `git diff --check` 均通过。产品 Release 二进制不包含测试环境变量、故障注入或受控消息标识。
+
+Git 交付已核实：工程提交 [`ffa2f73065111b18d346934f11ee7772bc4639df`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/ffa2f73065111b18d346934f11ee7772bc4639df) 已推送，`git ls-remote` 与 GitHub API 的 main SHA 均一致。分支 `main`，upstream `origin/main`，origin 为 `https://github.com/BlackJoke76/ZLRenderer_v2.git`。任务完成状态和本交接记录随单独的 `docs(initialize-vulkan)` 提交保存，最终文档 SHA 以 Git 历史为准。本地 `.agents/` 与两个预存 `.gitkeep` 未暂存；既有 bootstrap 归档不变。
+
+后续：用户请求 verify 时复核；请求 archive 时同步 `vulkan-context` 主规格后归档。当前 change 保持 active，现有两个主规格未改写。
 
 ## bootstrap-project 历史记录
 

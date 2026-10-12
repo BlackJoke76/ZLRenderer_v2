@@ -1,6 +1,6 @@
 # 实际进度
 
-当前 change：`present-clear-frame`，实施与验收通过（2026-10-12），24/24任务完成，已提交推送main。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。未同步 delta 或归档。
+当前没有活动 change。最近完成：`present-clear-frame`，实施、验收及独立复核通过，24/24任务完成；2026-10-12已同步主规格并归档至 `openspec/changes/archive/2026-10-12-present-clear-frame/`。实现和复核记录已提交推送main。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。归档交付记录见下方。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 
@@ -8,7 +8,7 @@
 
 ## present-clear-frame 验收与交接
 
-完整报告：`openspec/changes/present-clear-frame/verification.md`，覆盖8条新增帧呈现要求、3条context变更要求、1条文档变更要求，共34个场景。全部24/24任务完成，实施、验证与Git交付均已核对。主规格与既有归档保持原样。
+完整报告：`openspec/changes/archive/2026-10-12-present-clear-frame/verification.md`，覆盖8条新增帧呈现要求、3条context变更要求、1条文档变更要求，共34个场景。全部24/24任务完成，实施、验证与Git交付均已核对。实施与复核阶段未同步主规格；随后同步归档的结果见下方。
 
 全新 `build-present-clean` 从头配置和 Debug/Release 构建通过，/W4 /WX；各34项测试包含生产策略、真实帧对象身份复用、缺项/阶段回滚、重建和错误控制。测试目标用VK_EXT_layer_settings显式启用同步validation，生产窗口脚本使用SDK进程变量，不改全局配置。Release产品无测试环境变量/注入标识。
 
@@ -27,9 +27,15 @@
 
 交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`。只提交本change成果，未跟踪的 `.agents/` 与两个既有 `.gitkeep` 保留。实现提交 [`4dfcc6512689c4c2818e2c3c03fa042c38b55aaa`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/4dfcc6512689c4c2818e2c3c03fa042c38b55aaa) 已推送，git ls-remote确认main一致。任务完成与交付记录随单独docs(present-clear-frame)提交保存，最终文档SHA以Git历史及交付输出为准。
 
-2026-10-12，`openspec-verify-change` 独立复核 `present-clear-frame`：24/24任务、12/12要求、34/34场景有对应证据，7项设计与代码模式核查通过；0 critical / warning / suggestion，无跳过检查。重新构建Debug/Release，各34/34 CTest；两种配置的正常/最小化关闭和Release替代颜色窗口验收均通过。新证据在 `build-present-clean/verify-logs/`，详细计数及代码定位见活动change的verification.md。本次只更新复核报告和交接记录，未同步或归档。
+2026-10-12，`openspec-verify-change` 独立复核 `present-clear-frame`：24/24任务、12/12要求、34/34场景有对应证据，7项设计与代码模式核查通过；0 critical / warning / suggestion，无跳过检查。重新构建Debug/Release，各34/34 CTest；两种配置的正常/最小化关闭和Release替代颜色窗口验收均通过。新证据在 `build-present-clean/verify-logs/`，详细计数及代码定位见归档内的verification.md。该次复核只更新报告和交接记录，未同步或归档。
 
-真实硬件仍为FIFO、族0、3图像/2帧槽；MAILBOX/分族的合成覆盖与基础WSI清理限制保持明示。替代色截图两次被聊天界面遮挡，失败证据保留；通过忽略目录内的临时脚本仅将验收自身窗口置顶后重验通过，仓库脚本与产品代码未改动。已核对先前ASan记录及静态分析构建参数，本轮未重跑。复核文档将按已授权目标提交推送main，最终SHA及远程一致性以Git历史和交付输出为准。
+真实硬件仍为FIFO、族0、3图像/2帧槽；MAILBOX/分族的合成覆盖与基础WSI清理限制保持明示。替代色截图两次被聊天界面遮挡，失败证据保留；通过忽略目录内的临时脚本仅将验收自身窗口置顶后重验通过，仓库脚本与产品代码未改动。已核对先前ASan记录及静态分析构建参数，该轮未重跑。复核提交 [`114c73a9781ce5f68d1454c8f0bc136538b9c921`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/114c73a9781ce5f68d1454c8f0bc136538b9c921) 已推送main并核对远程SHA。
+
+2026-10-12，沿用用户“同步主规格后归档”的选择，完成 `present-clear-frame` 归档（schema：spec-driven）。新增 `openspec/specs/frame-presentation/spec.md` 的8条要求；更新 `vulkan-context` 的3条要求与 `project-onboarding` 的1条要求。12条delta要求和34个场景逐项与主规格比对一致；新Purpose原文保留，既有主规格标题、Purpose及未涉及要求不变，无delta操作标题或TBD占位。
+
+同步后的4份主规格严格校验全部通过，归档前change严格校验通过。8个change文件（含 `.openspec.yaml`、三份delta及verification）移动前后SHA256完全一致，归档路径为 `openspec/changes/archive/2026-10-12-present-clear-frame/`，active changes为空，无未完成材料或任务警告。核查快照在忽略目录 `build-present-clean/verify-logs/pre-archive-main-specs.json` 和 `archive-manifest.json`。归档内报告保留当时实施/复核状态文字，当前状态以本交接记录为准。
+
+本次只同步规格、移动归档并更新STATUS/ROADMAP；产品代码未改动，不重复运行已通过的构建和窗口验收。归档和主规格更新纳入独立 `present-clear-frame` 文档提交，目标仍为已核实的HTTPS origin、main / origin/main；最终提交与远程同步SHA以Git历史及交付结果为准。既有其他归档、desktop-window及未跟踪的 `.agents/` 和两个 `.gitkeep` 保留。
 
 ## initialize-vulkan 历史交付
 

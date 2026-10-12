@@ -26,6 +26,11 @@
 `build-present-asan`：/EHsc /Zi /fsanitize=address，链接/DEBUG，34/34回归及窗口通过，无主机内存问题。`build-present-analysis`：/EHsc /analyze，四个C++目标无警告。未安装Clang，MSVC无UBSan，本次未运行或宣称UBSan通过。未修改驱动或全局配置。
 
 交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`。只提交本change成果，未跟踪的 `.agents/` 与两个既有 `.gitkeep` 保留。实现提交 [`4dfcc6512689c4c2818e2c3c03fa042c38b55aaa`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/4dfcc6512689c4c2818e2c3c03fa042c38b55aaa) 已推送，git ls-remote确认main一致。任务完成与交付记录随单独docs(present-clear-frame)提交保存，最终文档SHA以Git历史及交付输出为准。
+
+2026-10-12，`openspec-verify-change` 独立复核 `present-clear-frame`：24/24任务、12/12要求、34/34场景有对应证据，7项设计与代码模式核查通过；0 critical / warning / suggestion，无跳过检查。重新构建Debug/Release，各34/34 CTest；两种配置的正常/最小化关闭和Release替代颜色窗口验收均通过。新证据在 `build-present-clean/verify-logs/`，详细计数及代码定位见活动change的verification.md。本次只更新复核报告和交接记录，未同步或归档。
+
+真实硬件仍为FIFO、族0、3图像/2帧槽；MAILBOX/分族的合成覆盖与基础WSI清理限制保持明示。替代色截图两次被聊天界面遮挡，失败证据保留；通过忽略目录内的临时脚本仅将验收自身窗口置顶后重验通过，仓库脚本与产品代码未改动。已核对先前ASan记录及静态分析构建参数，本轮未重跑。复核文档将按已授权目标提交推送main，最终SHA及远程一致性以Git历史和交付输出为准。
+
 ## initialize-vulkan 历史交付
 
 最近完成：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，已归档至 `openspec/changes/archive/2026-10-11-initialize-vulkan/`。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。

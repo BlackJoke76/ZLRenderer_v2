@@ -54,3 +54,62 @@ Rhi通过私有VulkanBackend组合context和presenter；后者借用device view�
 - 自动像素验证需要未遮挡桌面，支持四种B8/R8 UNORM/SRGB；其他格式须人工查看截图。不宣称帧率或性能优化保证。
 
 Git交付任务6.4已完成；实现提交和任务完成记录分别保存并推送到已确认的origin/main，交接记录同步更新。主规格同步与归档等待用户后续请求。
+
+## OpenSpec 独立复核（2026-10-12）
+
+本节响应独立的 openspec-verify-change 请求。核查基线为 `c7c609e4ccc35fd7152b0b406c4ad825ce162b1d`，实现提交为 `4dfcc6512689c4c2818e2c3c03fa042c38b55aaa`。重新读取 proposal、三份 delta、design、tasks，对照实际代码、测试断言与原始运行证据；没有以 apply 的 all_done 状态代替验收。
+
+| 维度 | 复核结果 |
+|---|---|
+| 完整性 | Task Completion：24/24；Spec Coverage：12/12 ADDED/MODIFIED 要求有实现（8新增、4修改），无 REMOVED/RENAMED |
+| 正确性 | Requirement Implementation Mapping：12/12符合；Scenario Coverage：34/34有对应实现及测试或代码审查证据，真实/合成/注入覆盖按下述界限区分 |
+| 一致性 | Design Adherence：7项决策符合；Code Pattern Consistency：所有权、命名、公共函数复用、目录及测试隔离符合项目模式 |
+
+所有适用检查均执行，无跳过检查。未实测 MAILBOX/分族等硬件条件不计为硬件通过；其策略与创建参数通过生产 helper 的合成输入和代码核查验证，符合设计指定的覆盖方法。
+
+### 要求与代码定位
+
+场景逐项对应沿用上方34个场景表，本次重新核对表内全部证据与以下实现；代码定位为仓库相对路径及行号。
+
+| 要求 | 实现位置与核查重点 |
+|---|---|
+| Expose a minimal rendering interface | src/rhi.h:5-29、src/rhi.cpp:8-40、src/main.cpp:57-74；应用不操作 Vk 对象，后端及窗口析构次序正确 |
+| Choose a supported swapchain configuration | src/swapchainSelection.cpp:7-94、src/vulkanPresenter.cpp:113-199；真实查询、模式优先级、限制及实际图像列表；生产 helper 测试 |
+| Continuously present the configured clear color | src/rhi.cpp:17-27、src/main.cpp:60-73、src/vulkanPresenter.cpp:202-221；有限颜色检查、完整 renderArea、持续事件/帧循环；默认及替代色实际像素 |
+| Synchronize acquisition rendering and presentation | src/vulkanPresenter.cpp:78-110、224-325；COLOR_ATTACHMENT_OUTPUT 获取等待、颜色写入及最终布局；CONCURRENT 分族参数 |
+| Reuse completed frame and image resources | src/vulkanPresenter.h:23-45、src/vulkanPresenter.cpp:43-75、235-302；fence 后 reset pool，present semaphore 按 imageIndex；测试比较对象身份 |
+| Recover from window and swapchain changes | src/main.cpp:60-73、src/vulkanPresenter.cpp:224-268、303-343；跳帧不 reset fence，成功 SUBOPTIMAL acquire 的信号被消费，重建清除旧命令引用 |
+| Handle aborted frames and rendering failures | src/vulkanPresenter.cpp:269-325、328-343、403-418；提交前才 reset fence，成功 submit 后才推进；清理只等待实际提交，错误阶段/结果保留 |
+| Validate presentation lifecycle | CMakeLists.txt 测试目标及 tests/verifyPresentation.cmake:1-87、scripts/verifyWindow.ps1；严格诊断分类、计数及退出断言，本次重跑结果见下表 |
+| Select a suitable physical device | src/vulkanContext.cpp:209-266、src/queueSelection.cpp:3-25；缺扩展/usage 拒绝，继续候选遍历，同族及分族选择 |
+| Create and retrieve the selected queues | src/vulkanContext.cpp:85-90、268-301、src/queueSelection.cpp:27-33；请求去重、启用 KHR swapchain、获取合法 queues |
+| Destroy objects before their dependencies | src/vulkanPresenter.cpp:328-418、src/vulkanContext.cpp:303-334、src/rhi.cpp:8-12；等待、子资源及基础对象销毁，异常回滚和幂等清理 |
+| Recorded presentation preference | AGENTS.md、README.md、docs/ROADMAP.md、docs/STATUS.md；约定、从头构建、实际 FIFO 与后续阶段准确一致 |
+
+七项设计分别核对 RHI 边界、公共选择策略、CLEAR/STORE render pass、帧槽/图像归属、停顿重建、销毁/WSI限制和测试隔离。稳定帧路径没有创建/销毁命令及同步对象或调用 WaitIdle；仅重建和关闭允许整体等待。既有初始化及队列场景均保留。
+
+### 本次重跑
+
+在此前从头配置的 `build-present-clean` 中重新构建 Debug/Release，各34/34 CTest通过。独立构建/CTest输出保存为 `verify-logs/build-<配置>.log`、`verify-logs/ctest-<配置>.log`；子进程原始诊断在 `test-logs/<配置>/`。测试实例明确输出 `VK_EXT_layer_settings validate_sync=true`；窗口子进程设置 `VK_LAYER_VALIDATE_SYNC=1`。这两种启用方式与 [LunarG 官方文档](https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/synchronization_usage.html)一致。
+
+| 本次真实窗口流程 | submitted/presented | generations | build-present-clean 下的证据目录 |
+|---|---|---|---|
+| Debug默认色、缩放、最小化恢复、关闭 | 2057/2057 | 5 | verify-logs/Debug/normal |
+| Debug最小化期间关闭 | 1975/1975 | 5 | verify-logs/Debug/minimized-close |
+| Release默认色、缩放、最小化恢复、关闭 | 2035/2035 | 5 | verify-logs/Release/normal |
+| Release最小化期间关闭 | 1974/1974 | 5 | verify-logs/Release/minimized-close |
+| Release替代色（测试目标，前台保护重验） | 2043/2043 | 5 | verify-logs/Release/alternate-foreground |
+
+每组均无输入持续至少10秒、重复缩放、9点颜色采样、退出0、创建/释放平衡及正确基础销毁顺序。默认RGB63,89,124，替代RGB124,63,89；实际查看恢复后的默认/替代客户区PNG为均匀配置色。实际仍为RX7900XT、族0、FIFO、format50、3图像、2帧槽。Release产品二进制再次检查，不包含测试变量、注入及受控诊断标识。原始诊断仅包含已记录的具体 AMD loader 消息，无未知应用 validation/sync WARNING/ERROR。
+
+替代色前两次截图被聊天界面遮挡，保留 `verify-logs/Release/alternate` 和 `alternate-retry` 的失败截图及原始日志；不将这些尝试计为通过。第三次在忽略的构建目录生成 `verify-logs/verifyWindowForeground.ps1`，仅为原脚本增加对其自身启动窗口的 SetWindowPos 置顶及诊断文件绝对定位，避免前台限制；检查与颜色断言保持原样，产品代码和仓库脚本未改动，窗口随验收正常关闭。
+
+已核对先前 ASan 测试/窗口记录及静态分析、全新配置的构建参数；本轮未重跑 ASan、/analyze、UBSan，不将它们列为本次新增通过项。真实设备丢失、MAILBOX、分族及真实格式/图像数变化的实测界限继续保留。WaitIdle清理不能严格证明呈现引擎完成，这是已声明的设计限制；[Khronos 说明](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html)仍支持该界限，不能以 validation 干净替代 present fence 保证。
+
+### 问题与结论
+
+- CRITICAL：0。
+- WARNING：0。
+- SUGGESTION：0。
+
+所有复核检查通过，在已声明的设计范围与覆盖界限内可归档。change 严格校验及 git diff --check 通过。本次仅保存报告和 STATUS 交接记录；未实施任务、同步主规格或归档，Git交付结果以本次提交历史及最终输出为准。

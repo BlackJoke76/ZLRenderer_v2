@@ -8,8 +8,8 @@
 
 ## 画面呈现
 
-- 后续 Vulkan swapchain 查询设备和 surface 支持的呈现模式；支持 MAILBOX 时优先使用 MAILBOX，否则回退 FIFO。
-- 对应 change 必须验证模式选择与回退。当前空窗口工程不实现 swapchain。
+- Vulkan swapchain 查询设备和 surface 支持的呈现模式；支持 MAILBOX 时优先使用 MAILBOX，否则回退 FIFO。
+- 对应 change 必须验证模式选择与回退。当前最小 RHI 已实现持续清屏、帧资源复用和交换链重建；实际模式及硬件覆盖见 STATUS。
 
 ## 命名
 

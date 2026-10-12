@@ -1,5 +1,33 @@
 # 实际进度
 
+当前 change：`present-clear-frame`，实施与验收通过（2026-10-12），Git 交付待完成。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。未同步 delta 或归档。
+
+本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
+
+基础 WSI 限制按提案保留：稳定帧的 present semaphore 按图像和再次 acquire 同步复用；退出/简化重建采用常用 WaitIdle 清理，它证明 GPU 提交完成，不能严格证明呈现引擎完成。未启用 maintenance1/present fence，validation 无错误不能作为补足此保证的证据。细节见 ARCHITECTURE。
+
+## present-clear-frame 验收与交接
+
+完整报告：`openspec/changes/present-clear-frame/verification.md`，覆盖8条新增帧呈现要求、3条context变更要求、1条文档变更要求，共34个场景。实施与验证任务已验收，Git交付完成后更新最后一项任务。主规格与既有归档保持原样。
+
+全新 `build-present-clean` 从头配置和 Debug/Release 构建通过，/W4 /WX；各34项测试包含生产策略、真实帧对象身份复用、缺项/阶段回滚、重建和错误控制。测试目标用VK_EXT_layer_settings显式启用同步validation，生产窗口脚本使用SDK进程变量，不改全局配置。Release产品无测试环境变量/注入标识。
+
+| 实际窗口验收 | submitted/presented | 证据目录（原始日志、截图、verification.txt） |
+|---|---|---|
+| Debug持续颜色、缩放、最小化恢复、关闭 | 2036/2036 | build-present-clean/window-logs/Debug |
+| Debug最小化期间关闭 | 1998/1998 | build-present-clean/minimized-close-logs/Debug |
+| Release持续颜色、缩放、最小化恢复、关闭 | 2044/2044 | build-present-clean/window-logs/Release |
+| Release最小化期间关闭 | 2000/2000 | build-present-clean/minimized-close-logs/Release |
+| Release替代颜色（测试目标） | 2064/2064 | build-present-clean/alternate-color-logs/Release |
+| ASan Release完整窗口流程 | 2068/2068 | build-present-asan/window-logs/Release |
+
+每次无输入至少10秒，重复缩放至5代，9点采样默认RGB63,89,124、替代RGB124,63,89；退出0、资源创建/释放平衡，只有既有具体AMD loader诊断，无未知应用validation/sync错误。截图DPI修正后重验；一次并发窗口遮挡失败截图/日志保留，最终顺序运行通过。
+
+`build-present-asan`：/EHsc /Zi /fsanitize=address，链接/DEBUG，34/34回归及窗口通过，无主机内存问题。`build-present-analysis`：/EHsc /analyze，四个C++目标无警告。未安装Clang，MSVC无UBSan，本次未运行或宣称UBSan通过。未修改驱动或全局配置。
+
+交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`。只提交本change成果，未跟踪的 `.agents/` 与两个既有 `.gitkeep` 保留。提交SHA和最终远程核对在交付后追加。
+## initialize-vulkan 历史交付
+
 最近完成：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，已归档至 `openspec/changes/archive/2026-10-11-initialize-vulkan/`。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。
 
 本次 `vulkaninfoSDK.exe --summary` 原始输出保存在 `build/vulkanBaseline.log`，包含 `VK_LAYER_GAMEPP uses API version 1.3 ... application ... 1.4` 的 loader WARNING。提案探测还曾出现旧 AMD ICD JSON 路径无法打开、EOS Overlay Win64/Win32 重复的 loader 消息；本次 summary 未复现，不能将这些环境诊断归为应用生命周期错误，也不将未复现视为系统已修复。
@@ -41,7 +69,7 @@ Git 交付已核实：工程提交 [`ffa2f73065111b18d346934f11ee7772bc4639df`](
 
 2026-10-11，沿用用户“同步主规格后归档”的选择，新增 `openspec/specs/vulkan-context/spec.md`，保留 delta 的 Purpose、6 条要求及 13 个场景原文，仅规范主规格标题和 Requirements 分区。同步前后逐项内容比较一致，`openspec validate --specs --strict` 三份主规格全部通过。归档前 change 的严格校验通过；移动后的 6 个文件（包括 metadata 和 verification）SHA256 均不变，`openspec list --json` 的 active changes 已为空，无未完成任务/材料警告。
 
-归档和主规格更新纳入独立 `initialize-vulkan` 文档提交，目标为已核实的 `main` / `origin/main`；提交及远程 SHA 以 Git 历史和交付结果为准。当前无 active change；已有窗口/入门主规格和 bootstrap 归档保持原样。后续 swapchain/MAILBOX 与首帧需新建 change。
+归档和主规格更新纳入独立 `initialize-vulkan` 文档提交，目标为已核实的 `main` / `origin/main`；提交及远程 SHA 以 Git 历史和交付结果为准。此次归档时无 active change；已有窗口/入门主规格和 bootstrap 归档保持原样。之后由新的 present-clear-frame change 实施交换链与清屏。
 
 ## bootstrap-project 历史记录
 

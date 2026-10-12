@@ -5,6 +5,15 @@
 
 struct GLFWwindow;
 
+struct VulkanDeviceView {
+    VkPhysicalDevice physicalDeviceHandle;
+    VkDevice deviceHandle;
+    VkSurfaceKHR surfaceHandle;
+    VkQueue graphicsQueueHandle;
+    VkQueue presentQueueHandle;
+    QueueFamilySelection queueFamilies;
+};
+
 class VulkanContext {
 public:
     VulkanContext() = default;
@@ -15,6 +24,7 @@ public:
     VulkanContext& operator=(VulkanContext&&) = delete;
 
     void initialize(GLFWwindow* windowHandle);
+    VulkanDeviceView getDeviceView() const noexcept;
 
 private:
     void createInstance();

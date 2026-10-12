@@ -1,8 +1,9 @@
 # 路线图
 
-1. `bootstrap-project`：Windows CMake/C++20/GLFW 工程、窗口生命周期、文档和 GitHub 交付。实际验收状态见 STATUS.md。
-2. `initialize-vulkan`：现有窗口中的 instance、validation messenger、surface、物理/逻辑设备与 queues，正常及部分初始化销毁顺序。实际验收状态见 STATUS.md。
-3. 后续待规划：独立 swapchain 与首帧呈现 change。遵守 AGENTS.md：支持 MAILBOX 时优先选择，否则回退 FIFO；检查设备扩展、surface 能力，验证模式选择、回退和窗口调整大小。
-4. 后续待规划：明确帧资源生命周期与 GPU 同步，再逐步加入基础渲染；加入提交后须扩展退出时的完成等待契约。
+1. `bootstrap-project`：Windows CMake/C++20/GLFW、窗口生命周期与工程文档，已验收并归档。
+2. `initialize-vulkan`：instance、validation、surface、物理/逻辑设备和 queues，已验收并归档。
+3. `present-clear-frame`：具体最小 RHI、交换链、两个帧槽的持续清屏、图像级呈现同步、缩放和最小化恢复，实施验收通过，Git 交付状态见 STATUS。支持 MAILBOX 时优先选择，否则 FIFO；本机实际为 FIFO 回退，MAILBOX 策略与分族参数有合成覆盖。
+4. 后续待规划：基础绘制的 shader/pipeline/顶点输入等，用独立 OpenSpec change 明确范围与验收。
+5. 后续待规划：按目标环境评估 maintenance1/present fence 等扩展，为交换链重建和退出增加严格的呈现完成保证；当前基础 WSI WaitIdle 清理限制见 ARCHITECTURE。
 
-第 3、4 阶段尚未实现；每个阶段需先形成独立 OpenSpec change 与验收标准，不因路线图而提前扩展当前工程。当前不选择呈现模式，不分配帧资源，不提交或等待 GPU 工作。
+后续阶段尚未实现；不因为路线图而提前引入通用资源体系、渲染图或多线程架构。实际验证、兼容限制及提交/归档状态见 STATUS。

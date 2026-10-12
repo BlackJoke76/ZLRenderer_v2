@@ -1,4 +1,6 @@
 #include "vulkanContext.h"
+#include "vulkanUtilities.h"
+#include "swapchainSelection.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
@@ -16,38 +18,6 @@
 
 namespace {
 constexpr const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
-
-void checkResult(VkResult result, const char* operation) {
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error(std::string(operation) + " failed (VkResult=" +
-                                 std::to_string(result) + ").");
-    }
-}
-
-template <typename Property, typename Enumerate>
-    requires std::invocable<Enumerate, std::uint32_t*, Property*>
-std::vector<Property> enumerateProperties(Enumerate enumerate, const char* operation) {
-    // A changing driver/layer list can outgrow the count between these two calls.
-    for (;;) {
-        std::uint32_t propertyCount = 0;
-        const auto countResult = enumerate(&propertyCount, static_cast<Property*>(nullptr));
-        if (countResult == VK_INCOMPLETE) {
-            continue;
-        }
-        checkResult(countResult, operation);
-        std::vector<Property> properties(propertyCount);
-        if (propertyCount == 0) {
-            return properties;
-        }
-        const auto fillResult = enumerate(&propertyCount, properties.data());
-        if (fillResult == VK_INCOMPLETE) {
-            continue;
-        }
-        checkResult(fillResult, operation);
-        properties.resize(propertyCount);
-        return properties;
-    }
-}
 
 VKAPI_ATTR VkBool32 VKAPI_CALL reportVulkanMessage(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -78,6 +48,10 @@ VkDebugUtilsMessengerCreateInfoEXT makeDebugMessengerInfo() {
 
 VulkanContext::~VulkanContext() noexcept {
     cleanup();
+}
+
+VulkanDeviceView VulkanContext::getDeviceView() const noexcept {
+    return {physicalDeviceHandle, deviceHandle, surfaceHandle, graphicsQueueHandle, presentQueueHandle, queueFamilies};
 }
 
 void VulkanContext::initialize(GLFWwindow* windowHandle) {
@@ -156,11 +130,23 @@ void VulkanContext::createInstance() {
     const auto extensions = enumerateProperties<VkExtensionProperties>(
         [](auto* count, auto* properties) { return vkEnumerateInstanceExtensionProperties(nullptr, count, properties); },
         "instance prerequisites: vkEnumerateInstanceExtensionProperties");
+#ifdef ZL_RENDERER_TESTING
+    const auto layerExtensions = enumerateProperties<VkExtensionProperties>(
+        [](auto* count, auto* properties) { return vkEnumerateInstanceExtensionProperties(validationLayerName, count, properties); },
+        "test validation: vkEnumerateInstanceExtensionProperties");
+    const auto hasLayerSettings = std::ranges::any_of(layerExtensions, [](const auto& extension) {
+        return std::strcmp(extension.extensionName, VK_EXT_LAYER_SETTINGS_EXTENSION_NAME) == 0;
+    });
+    if (hasLayerSettings) { extensionNames.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME); }
+#endif
     for (const auto extensionName : extensionNames) {
         auto hasExtension = std::ranges::any_of(extensions, [extensionName](const auto& extension) {
             return std::strcmp(extension.extensionName, extensionName) == 0;
         });
 #ifdef ZL_RENDERER_TESTING
+        hasExtension = hasExtension || std::ranges::any_of(layerExtensions, [extensionName](const auto& extension) {
+            return std::strcmp(extension.extensionName, extensionName) == 0;
+        });
         if (isVulkanTestCase("missing-extension") &&
             std::strcmp(extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
             hasExtension = false;
@@ -175,7 +161,17 @@ void VulkanContext::createInstance() {
     applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     applicationInfo.pApplicationName = "ZLRenderer";
     applicationInfo.apiVersion = VK_API_VERSION_1_0;
-    const auto messengerInfo = makeDebugMessengerInfo();
+    auto messengerInfo = makeDebugMessengerInfo();
+#ifdef ZL_RENDERER_TESTING
+    const VkBool32 enableSynchronization = VK_TRUE;
+    const VkLayerSettingEXT synchronizationSetting{validationLayerName, "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT,
+                                                    1, &enableSynchronization};
+    VkLayerSettingsCreateInfoEXT layerSettings{};
+    layerSettings.sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
+    layerSettings.settingCount = 1;
+    layerSettings.pSettings = &synchronizationSetting;
+    if (hasLayerSettings) { messengerInfo.pNext = &layerSettings; }
+#endif
     VkInstanceCreateInfo instanceInfo{};
     instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instanceInfo.pNext = &messengerInfo;
@@ -188,6 +184,10 @@ void VulkanContext::createInstance() {
     checkResult(vkCreateInstance(&instanceInfo, nullptr, &createdInstanceHandle), "instance: vkCreateInstance");
     instanceHandle = createdInstanceHandle;
     std::puts("Created instance; validation enabled: VK_LAYER_KHRONOS_validation (API 1.0)");
+#ifdef ZL_RENDERER_TESTING
+    std::puts(hasLayerSettings ? "Synchronization validation enabled: VK_EXT_layer_settings validate_sync=true" :
+                               "Synchronization validation: layer settings extension unavailable; inspect SDK environment settings");
+#endif
 }
 
 void VulkanContext::createDebugMessenger() {
@@ -237,6 +237,22 @@ void VulkanContext::selectPhysicalDevice() {
         }
 #endif
         if (selection) {
+            const auto extensions = enumerateProperties<VkExtensionProperties>(
+                [=](auto* count, auto* properties) {
+                    return vkEnumerateDeviceExtensionProperties(candidateHandle, nullptr, count, properties);
+                }, "physical device selection: vkEnumerateDeviceExtensionProperties");
+            auto hasSwapchain = std::ranges::any_of(extensions, [](const auto& extension) {
+                return std::strcmp(extension.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
+            });
+            auto support = querySurfaceSupport(candidateHandle, surfaceHandle);
+#ifdef ZL_RENDERER_TESTING
+            if (isVulkanTestCase("missing-swapchain")) { hasSwapchain = false; }
+            if (isVulkanTestCase("missing-surface-usage")) { support.capabilities.supportedUsageFlags = 0; }
+#endif
+            if (!hasSwapchain || !supportsClearPresentation(support)) {
+                std::fprintf(stderr, "Rejected candidate: swapchain extension or clear surface support unavailable.\n");
+                continue;
+            }
             physicalDeviceHandle = candidateHandle;
             queueFamilies = *selection;
             VkPhysicalDeviceProperties properties{};
@@ -246,7 +262,7 @@ void VulkanContext::selectPhysicalDevice() {
             return;
         }
     }
-    throw std::runtime_error("physical device selection: no suitable graphics/present device for this surface.");
+    throw std::runtime_error("physical device selection: no suitable graphics/present device with swapchain support for this surface.");
 }
 
 void VulkanContext::createLogicalDevice() {
@@ -266,6 +282,9 @@ void VulkanContext::createLogicalDevice() {
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceInfo.queueCreateInfoCount = static_cast<std::uint32_t>(queueInfos.size());
     deviceInfo.pQueueCreateInfos = queueInfos.data();
+    const char* swapchainExtension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    deviceInfo.enabledExtensionCount = 1;
+    deviceInfo.ppEnabledExtensionNames = &swapchainExtension;
     VkDevice createdDeviceHandle = VK_NULL_HANDLE;
     VkResult createResult;
 #ifdef ZL_RENDERER_TESTING
@@ -283,7 +302,7 @@ void VulkanContext::createLogicalDevice() {
 
 void VulkanContext::cleanup() noexcept {
     if (deviceHandle != VK_NULL_HANDLE) {
-        // No GPU work is submitted in this change; future submissions require a completion contract.
+        // The borrowing presenter completes GPU submissions and releases children first.
         vkDestroyDevice(deviceHandle, nullptr);
         deviceHandle = VK_NULL_HANDLE;
         graphicsQueueHandle = VK_NULL_HANDLE;

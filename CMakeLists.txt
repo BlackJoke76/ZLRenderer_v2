@@ -24,7 +24,7 @@ function(configureCppTarget targetName)
     endif()
 endfunction()
 
-set(rendererSources src/main.cpp src/vulkanContext.cpp src/queueSelection.cpp)
+set(rendererSources src/main.cpp src/rhi.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
 add_executable(zlRenderer ${rendererSources})
 configureCppTarget(zlRenderer)
 target_link_libraries(zlRenderer PRIVATE glfw Vulkan::Vulkan)
@@ -35,18 +35,33 @@ if(BUILD_TESTING)
     configureCppTarget(queueSelectionTests)
     add_test(NAME queue-selection COMMAND queueSelectionTests)
 
+    add_executable(swapchainSelectionTests tests/swapchainSelectionTests.cpp src/swapchainSelection.cpp src/queueSelection.cpp)
+    configureCppTarget(swapchainSelectionTests)
+    target_link_libraries(swapchainSelectionTests PRIVATE Vulkan::Vulkan)
+    add_test(NAME swapchain-selection COMMAND swapchainSelectionTests)
+
     # Fault injection is compiled only into this separate test executable.
     add_executable(vulkanLifecycleTests ${rendererSources} tests/vulkanTestHooks.cpp)
     configureCppTarget(vulkanLifecycleTests)
     target_include_directories(vulkanLifecycleTests PRIVATE tests)
     target_compile_definitions(vulkanLifecycleTests PRIVATE ZL_RENDERER_TESTING)
     target_link_libraries(vulkanLifecycleTests PRIVATE glfw Vulkan::Vulkan)
-    foreach(testCase missing-layer missing-extension instance messenger surface no-device create-device device diagnostic)
+    foreach(testCase missing-layer missing-extension instance messenger surface no-device missing-swapchain missing-surface-usage create-device device diagnostic)
         add_test(NAME vulkan-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
             "-DtestCase=${testCase}"
             "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyVulkanLifecycle.cmake")
         set_tests_properties(vulkan-${testCase} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endforeach()
+    foreach(testCase normal fifo alternate invalid-color nonfinite-color frame-resources swapchain image-view framebuffer
+            fence-timeout acquire-timeout acquire-out-of-date acquire-suboptimal present-out-of-date present-suboptimal
+            record submit rebuild-failure surface-lost present-failure wait-failure)
+        add_test(NAME presentation-${testCase} COMMAND ${CMAKE_COMMAND}
+            "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
+            "-DtestCase=${testCase}"
+            "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyPresentation.cmake")
+        set_tests_properties(presentation-${testCase} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
     endforeach()
 endif()

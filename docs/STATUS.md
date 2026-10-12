@@ -1,6 +1,6 @@
 # 实际进度
 
-当前 change：`present-clear-frame`，实施与验收通过（2026-10-12），Git 交付待完成。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。未同步 delta 或归档。
+当前 change：`present-clear-frame`，实施与验收通过（2026-10-12），24/24任务完成，已提交推送main。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。未同步 delta 或归档。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 
@@ -8,7 +8,7 @@
 
 ## present-clear-frame 验收与交接
 
-完整报告：`openspec/changes/present-clear-frame/verification.md`，覆盖8条新增帧呈现要求、3条context变更要求、1条文档变更要求，共34个场景。实施与验证任务已验收，Git交付完成后更新最后一项任务。主规格与既有归档保持原样。
+完整报告：`openspec/changes/present-clear-frame/verification.md`，覆盖8条新增帧呈现要求、3条context变更要求、1条文档变更要求，共34个场景。全部24/24任务完成，实施、验证与Git交付均已核对。主规格与既有归档保持原样。
 
 全新 `build-present-clean` 从头配置和 Debug/Release 构建通过，/W4 /WX；各34项测试包含生产策略、真实帧对象身份复用、缺项/阶段回滚、重建和错误控制。测试目标用VK_EXT_layer_settings显式启用同步validation，生产窗口脚本使用SDK进程变量，不改全局配置。Release产品无测试环境变量/注入标识。
 
@@ -25,7 +25,7 @@
 
 `build-present-asan`：/EHsc /Zi /fsanitize=address，链接/DEBUG，34/34回归及窗口通过，无主机内存问题。`build-present-analysis`：/EHsc /analyze，四个C++目标无警告。未安装Clang，MSVC无UBSan，本次未运行或宣称UBSan通过。未修改驱动或全局配置。
 
-交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`。只提交本change成果，未跟踪的 `.agents/` 与两个既有 `.gitkeep` 保留。提交SHA和最终远程核对在交付后追加。
+交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`。只提交本change成果，未跟踪的 `.agents/` 与两个既有 `.gitkeep` 保留。实现提交 [`4dfcc6512689c4c2818e2c3c03fa042c38b55aaa`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/4dfcc6512689c4c2818e2c3c03fa042c38b55aaa) 已推送，git ls-remote确认main一致。任务完成与交付记录随单独docs(present-clear-frame)提交保存，最终文档SHA以Git历史及交付输出为准。
 ## initialize-vulkan 历史交付
 
 最近完成：`initialize-vulkan`，14/14 任务完成，实现与运行验收通过，已提交推送 `main`，已归档至 `openspec/changes/archive/2026-10-11-initialize-vulkan/`。2026-10-11 环境基线：SDK `C:\VulkanSDK\1.4.341.1` 的 Vulkan 头文件、import library、validation JSON/DLL 和 `vulkaninfoSDK.exe` 可用；loader 1.4.341，Khronos validation 1.4.341，AMD Radeon RX 7900 XT（设备 API 1.4.349）。未修改驱动、注册表或全局 layer 设置。

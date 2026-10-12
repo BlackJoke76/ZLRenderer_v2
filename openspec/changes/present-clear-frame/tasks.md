@@ -40,7 +40,7 @@
 - [x] 6.1 在新的构建目录按 README 配置、编译 Debug/Release 并运行完整 CTest 和窗口脚本；保存持续至少 10 秒、缩放、最小化恢复/关闭及退出证据，核对正常退出为 0，未知应用 validation WARNING/ERROR 均无遗漏。
 - [x] 6.2 在验收进程启用 SDK 支持的 synchronization validation，保存启用及运行日志；记录实际 MAILBOX/FIFO、图像数、帧槽复用、合成 FIFO/分族及故障路径覆盖，支持时增加仅测试目标的实际 FIFO 运行，明确无法覆盖的硬件/工具条件。
 - [x] 6.3 核对 proposal、全部 delta、design 和验收证据，更新 STATUS/ROADMAP 及 change 的 verification.md；每个场景有实现与验证对应，任务仅在已验证后勾选，主规格在同步请求前保持原样。
-- [ ] 6.4 全部验收通过后核对差异、远程、main 和 upstream，只提交本 change 相关成果并推送已确认仓库；以提交 SHA、远程一致性和 GitHub 链接验证交付，保留其他工作区文件。
+- [x] 6.4 全部验收通过后核对差异、远程、main 和 upstream，只提交本 change 相关成果并推送已确认仓库；以提交 SHA、远程一致性和 GitHub 链接验证交付，保留其他工作区文件。
 
 ## Workflow follow-up
 

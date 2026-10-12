@@ -1,6 +1,6 @@
 # present-clear-frame 实施验收记录
 
-日期：2026-10-12（Asia/Shanghai）；schema：spec-driven。实施和运行验收通过，Git 交付待完成，仍为活动 change，未同步 delta 或归档。完成交付后以 STATUS 和提交历史为准。
+日期：2026-10-12（Asia/Shanghai）；schema：spec-driven。实施和运行验收通过，24/24任务完成，已提交推送main，仍为活动 change，未同步 delta 或归档。实现提交为4dfcc6512689c4c2818e2c3c03fa042c38b55aaa，远程main已核对一致；交付记录提交见STATUS和Git历史。
 
 ## 构建与运行证据
 
@@ -53,4 +53,4 @@ Rhi通过私有VulkanBackend组合context和presenter；后者借用device view�
 - 初次截图DPI偏移已通过SetProcessDPIAware修正并重验；一次Release截图被并发ASan窗口遮挡，保留capture-interference.png和interference.*.log，顺序重跑通过。最终可见窗口验收顺序运行。
 - 自动像素验证需要未遮挡桌面，支持四种B8/R8 UNORM/SRGB；其他格式须人工查看截图。不宣称帧率或性能优化保证。
 
-Git交付为任务6.4，完成后更新交接记录；此报告不自动同步主规格或归档。
+Git交付任务6.4已完成；实现提交和任务完成记录分别保存并推送到已确认的origin/main，交接记录同步更新。主规格同步与归档等待用户后续请求。

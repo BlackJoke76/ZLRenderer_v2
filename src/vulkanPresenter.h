@@ -3,7 +3,10 @@
 #include "vulkanContext.h"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <vector>
+
+struct SwapchainConfiguration;
 
 class VulkanPresenter {
 public:
@@ -27,29 +30,48 @@ private:
         VkFramebuffer framebufferHandle = VK_NULL_HANDLE;
         VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
     };
+    struct SwapchainResources {
+        explicit SwapchainResources(VkDevice deviceHandle, std::uint32_t generation);
+        ~SwapchainResources() noexcept;
+        SwapchainResources(const SwapchainResources&) = delete;
+        SwapchainResources& operator=(const SwapchainResources&) = delete;
+        VkDevice deviceHandle;
+        std::uint32_t generation;
+        VkSwapchainKHR swapchainHandle = VK_NULL_HANDLE;
+        VkRenderPass renderPassHandle = VK_NULL_HANDLE;
+        VkExtent2D renderExtent{};
+        VkExtent2D framebufferExtent{};
+        std::vector<ImageResources> images;
+        bool retired = false;
+    };
+    struct WindowState {
+        VkExtent2D framebufferExtent{};
+        bool iconified = false;
+        bool closing = false;
+    };
+    WindowState readWindowState(const char* stage) const;
+    void setPresentationPaused(bool paused, const char* reason);
     void createFrameResources();
-    void createSwapchain(VkExtent2D framebufferExtent);
-    void createRenderPass(VkFormat colorFormat);
+    std::unique_ptr<SwapchainResources> createSwapchain(const SwapchainConfiguration& configuration,
+        VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle);
+    void createRenderPass(SwapchainResources& resources, VkFormat colorFormat);
     void recordClearFrame(const FrameResources& frame, const ImageResources& image);
-    void rebuildSwapchain(VkExtent2D framebufferExtent);
+    bool rebuildSwapchain();
     VkResult waitForSubmissions() noexcept;
-    void releaseSwapchain() noexcept;
+    static void releaseSwapchain(SwapchainResources& resources) noexcept;
     void releaseResources() noexcept;
     GLFWwindow* windowHandle = nullptr; // Borrowed; outlives this presenter.
     VulkanDeviceView deviceView{};
     ClearColor clearColor{};
     std::array<FrameResources, 2> frames{};
-    std::vector<ImageResources> images;
-    VkSwapchainKHR swapchainHandle = VK_NULL_HANDLE;
-    VkRenderPass renderPassHandle = VK_NULL_HANDLE;
-    VkExtent2D renderExtent{};
-    VkExtent2D lastFramebufferExtent{};
+    std::unique_ptr<SwapchainResources> swapchainResources;
     std::uint32_t frameIndex = 0;
     std::uint64_t submittedFrames = 0;
     std::uint64_t presentedFrames = 0;
     std::uint32_t swapchainGeneration = 0;
     bool rebuildRequested = false;
     bool hasSubmittedWork = false;
+    bool presentationPaused = false;
 #ifdef ZL_RENDERER_TESTING
     bool testInjectionUsed = false;
 #endif

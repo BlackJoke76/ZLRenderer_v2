@@ -56,20 +56,18 @@ int main() {
 #endif
         Rhi renderer;
         renderer.initialize(windowHandle.get(), rendererConfig);
-        bool presentationPaused = false;
         while (glfwWindowShouldClose(windowHandle.get()) == GLFW_FALSE) {
             glfwPollEvents();
+            if (glfwWindowShouldClose(windowHandle.get()) == GLFW_TRUE) { break; }
+            renderer.renderFrame();
             if (glfwWindowShouldClose(windowHandle.get()) == GLFW_TRUE) { break; }
             int framebufferWidth = 0;
             int framebufferHeight = 0;
             glfwGetFramebufferSize(windowHandle.get(), &framebufferWidth, &framebufferHeight);
             if (framebufferWidth == 0 || framebufferHeight == 0 || glfwGetWindowAttrib(windowHandle.get(), GLFW_ICONIFIED) == GLFW_TRUE) {
-                if (!presentationPaused) { std::puts("Presentation paused: minimized/zero framebuffer"); presentationPaused = true; }
                 glfwWaitEvents();
                 continue;
             }
-            if (presentationPaused) { std::puts("Presentation resumed"); presentationPaused = false; }
-            renderer.renderFrame();
         }
         renderer.shutdown();
         return EXIT_SUCCESS;

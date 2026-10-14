@@ -29,5 +29,6 @@ SurfaceSupport querySurfaceSupport(VkPhysicalDevice physicalDeviceHandle, VkSurf
 std::optional<VkPresentModeKHR> selectPresentMode(std::span<const VkPresentModeKHR> modes);
 std::optional<VkSurfaceFormatKHR> selectSurfaceFormat(std::span<const VkSurfaceFormatKHR> formats);
 bool supportsClearPresentation(const SurfaceSupport& support);
+VkExtent2D selectSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebufferExtent);
 SwapchainConfiguration selectSwapchainConfiguration(const SurfaceSupport& support, VkExtent2D framebufferExtent,
                                                     const QueueFamilySelection& families);

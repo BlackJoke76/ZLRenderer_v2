@@ -66,6 +66,23 @@ int main() {
         try { (void)selectSwapchainConfiguration(support, {0, 0}, {0, 0}); }
         catch (const std::runtime_error&) { rejectedZero = true; }
         require(rejectedZero, "zero extent deferred");
+        for (const auto zeroExtent : {VkExtent2D{0, 0}, VkExtent2D{0, 480}, VkExtent2D{640, 0}}) {
+            support.capabilities.currentExtent = zeroExtent;
+            const auto selectedExtent = selectSwapchainExtent(support.capabilities, {640, 480});
+            require(selectedExtent.width == 0 || selectedExtent.height == 0, "fixed zero extent deferred");
+        }
+        support = makeSupport();
+        support.capabilities.minImageExtent = {0, 0};
+        support.capabilities.maxImageExtent = {0, 0};
+        require(selectSwapchainExtent(support.capabilities, {640, 480}).width == 0, "variable zero extent deferred");
+        support = makeSupport();
+        support.formats = {{VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}};
+        support.presentModes = {VK_PRESENT_MODE_FIFO_KHR};
+        support.capabilities.minImageCount = 1;
+        support.capabilities.maxImageCount = 2;
+        configuration = selectSwapchainConfiguration(support, {640, 480}, {0, 0});
+        require(configuration.surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM && configuration.imageCount == 2 &&
+                configuration.presentMode == VK_PRESENT_MODE_FIFO_KHR, "changed generation configuration");
         unsigned fillCalls = 0;
         const auto enumerated = enumerateProperties<unsigned>([&](auto* count, auto* values) {
             *count = 1;

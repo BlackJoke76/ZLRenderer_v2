@@ -1,10 +1,32 @@
 # 实际进度
 
-当前没有活动 change。最近完成：`present-clear-frame`，实施、验收及独立复核通过，24/24任务完成；2026-10-12已同步主规格并归档至 `openspec/changes/archive/2026-10-12-present-clear-frame/`。实现和复核记录已提交推送main。具体 RHI、两个帧槽、交换链和 CLEAR/STORE 帧循环已实现。Debug/Release/ASan 均 34/34 CTest 通过，MSVC /analyze 无警告；正常关闭、最小化关闭、替代颜色及 ASan 实际窗口均通过。归档交付记录见下方。
+当前活动 change：`handle-swapchain-resize`。2026-10-14 实施与验收通过，18/19 项已验证，剩余 Git 提交推送交付；未同步主规格或归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 
 基础 WSI 限制按提案保留：稳定帧的 present semaphore 按图像和再次 acquire 同步复用；退出/简化重建采用常用 WaitIdle 清理，它证明 GPU 提交完成，不能严格证明呈现引擎完成。未启用 maintenance1/present fence，validation 无错误不能作为补足此保证的证据。细节见 ARCHITECTURE。
+
+## handle-swapchain-resize 验收与交接
+
+报告：`openspec/changes/handle-swapchain-resize/verification.md`，4 条 delta 要求、25 个场景逐项关联实际/合成/控制及代码证据；严格校验与 git diff --check 通过。共享创建/释放用于初建与候选代，unique_ptr 保护候选异常清理；创建调用后的旧链已退役，失败停止正常循环并清理两代，不回滚 acquire 旧链。
+
+独立 `build-resize` 的 Debug/Release 无警告构建与各 50/50 CTest 通过。使用现有固定 GLFW 3.4 源码目录配置独立产物，未重新下载；完整 build/ctest 汇总在该目录的 `build-<配置>.log` 与 `ctest-<配置>.log`，原始测试诊断在 `test-logs/<配置>/`。连续 1→2→3 真交换链参数链、附件存活与帧归属、两个帧槽身份、候选各阶段失败均核验；创建失败的调用前注入只验证 host 控制，不声称真实驱动失败/退役。
+
+| 实际窗口流程 | submitted/presented | 代数 | 证据目录 |
+|---|---|---|---|
+| Debug 三次最小化恢复、可见关闭 | 2393/2393 | 9 | build-resize/final-window-logs/Debug |
+| Debug 三次恢复后最小化关闭 | 2348/2348 | 9 | build-resize/final-minimized-close-logs/Debug |
+| Release 三次恢复、可见关闭 | 2360/2360 | 9 | build-resize/final-window-logs/Release |
+| Release 三次恢复后最小化关闭 | 2342/2342 | 9 | build-resize/final-minimized-close-logs/Release |
+| ASan Release 三次恢复、可见关闭 | 2341/2341 | 9 | build-resize-asan/final-window-logs/Release |
+
+每流程持续无输入至少 10 秒，逐尺寸匹配实际 framebuffer/客户区/extent，在同一 DPI 上下文查询并保存物理客户区 PNG 与25点内部/边缘颜色采样（RGB 63,89,124）；快速缩放最终收敛，稳定阶段不增加代计数；每轮暂停/恢复快照的提交/呈现计数相同，恢复后继续推进。可见与最小化关闭都在正常设备条件下 5 秒内退出 0，资源计数平衡，无未知应用 validation/sync WARNING/ERROR。脚本只将自己启动的窗口置顶，不操作其他窗口。
+
+`build-resize-asan`：/EHsc /Zi /fsanitize=address、链接 /DEBUG，Release 50/50 CTest 与窗口通过；ASan DLL 路径只设于验证进程 PATH。`build-resize-analysis`：/EHsc /analyze，四个 C++ 目标无警告。未发现可用 Clang/UBSan，MSVC 不提供 UBSan，未宣称该项通过。测试目标显式 layer settings 启用 sync validation，生产窗口脚本给子进程 VK_LAYER_VALIDATE_SYNC=1；未修改驱动或全局配置。
+
+实际硬件仍为 RX 7900 XT、同族 0、FIFO、格式 50、3 图像/2 帧槽。MAILBOX、分族及跨代格式/图像数量变化保持合成/代码核查性质。保留原始具体 AMD loader 诊断，没有扩大过滤。基础 WSI WaitIdle 限制保持明示，oldSwapchain 不补足呈现引擎完成保证；扩展路径仍另行规划。
+
+交付目标当前已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`，main / origin/main。仅提交本 change 的源码、测试、规划、报告及文档；既有 `.agents/`、两个 `.gitkeep` 不纳入。提交推送结果完成后记录。
 
 ## present-clear-frame 验收与交接
 

@@ -11,6 +11,15 @@
 
 namespace {
 constexpr std::uint64_t frameWaitNanoseconds = 100'000'000;
+void reportSwapchainResource(const char* action, const char* resourceType, std::uint32_t generation, void* resourceHandle) noexcept {
+    std::printf("%s %s\n", action, resourceType);
+#ifdef ZL_RENDERER_TESTING
+    std::printf("Generation resource action=%s generation=%u type=%s handle=%p\n", action, generation, resourceType, resourceHandle);
+#else
+    (void)generation;
+    (void)resourceHandle;
+#endif
+}
 VkSemaphore createSemaphore(VkDevice deviceHandle) {
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -18,6 +27,13 @@ VkSemaphore createSemaphore(VkDevice deviceHandle) {
     checkResult(vkCreateSemaphore(deviceHandle, &semaphoreInfo, nullptr, &semaphoreHandle), "sync: vkCreateSemaphore");
     return semaphoreHandle;
 }
+}
+
+VulkanPresenter::SwapchainResources::SwapchainResources(VkDevice requestedDeviceHandle, std::uint32_t requestedGeneration)
+    : deviceHandle(requestedDeviceHandle), generation(requestedGeneration) {}
+
+VulkanPresenter::SwapchainResources::~SwapchainResources() noexcept {
+    VulkanPresenter::releaseSwapchain(*this);
 }
 
 VulkanPresenter::~VulkanPresenter() noexcept {
@@ -31,14 +47,38 @@ void VulkanPresenter::initialize(GLFWwindow* requestedWindowHandle, const Vulkan
     deviceView = requestedDeviceView;
     clearColor = requestedClearColor;
     createFrameResources();
-    int framebufferWidth = 0;
-    int framebufferHeight = 0;
-    glfwGetFramebufferSize(windowHandle, &framebufferWidth, &framebufferHeight);
-    if (framebufferWidth > 0 && framebufferHeight > 0 && glfwGetWindowAttrib(windowHandle, GLFW_ICONIFIED) == GLFW_FALSE) {
-        createSwapchain({static_cast<std::uint32_t>(framebufferWidth), static_cast<std::uint32_t>(framebufferHeight)});
+    const auto state = readWindowState("initialize");
+    if (!state.closing && !state.iconified && state.framebufferExtent.width > 0 && state.framebufferExtent.height > 0) {
+        (void)rebuildSwapchain();
+    } else if (!state.closing) {
+        setPresentationPaused(true, "minimized/zero framebuffer");
     }
     std::printf("RHI initialization succeeded; clearColor=(%.3f,%.3f,%.3f,%.3f); frameSlots=%zu\n",
                 clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha, frames.size());
+}
+
+VulkanPresenter::WindowState VulkanPresenter::readWindowState(const char* stage) const {
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetFramebufferSize(windowHandle, &framebufferWidth, &framebufferHeight);
+    auto iconified = glfwGetWindowAttrib(windowHandle, GLFW_ICONIFIED) == GLFW_TRUE;
+    auto closing = glfwWindowShouldClose(windowHandle) == GLFW_TRUE;
+#ifdef ZL_RENDERER_TESTING
+    applyWindowStateTest(stage, windowHandle, submittedFrames, framebufferWidth, framebufferHeight, iconified, closing);
+#else
+    (void)stage;
+#endif
+    return {{framebufferWidth > 0 ? static_cast<std::uint32_t>(framebufferWidth) : 0,
+             framebufferHeight > 0 ? static_cast<std::uint32_t>(framebufferHeight) : 0}, iconified, closing};
+}
+
+void VulkanPresenter::setPresentationPaused(bool paused, const char* reason) {
+    if (presentationPaused == paused) { return; }
+    presentationPaused = paused;
+    std::printf("Presentation %s: %s; generation=%u submitted=%llu presented=%llu rebuildRequested=%d\n",
+                paused ? "paused" : "resumed", reason, swapchainGeneration,
+                static_cast<unsigned long long>(submittedFrames), static_cast<unsigned long long>(presentedFrames),
+                rebuildRequested ? 1 : 0);
 }
 
 void VulkanPresenter::createFrameResources() {
@@ -75,7 +115,7 @@ void VulkanPresenter::createFrameResources() {
     }
 }
 
-void VulkanPresenter::createRenderPass(VkFormat colorFormat) {
+void VulkanPresenter::createRenderPass(SwapchainResources& resources, VkFormat colorFormat) {
     VkAttachmentDescription attachment{};
     attachment.format = colorFormat;
     attachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -106,19 +146,16 @@ void VulkanPresenter::createRenderPass(VkFormat colorFormat) {
     passInfo.pDependencies = &dependency;
     VkRenderPass createdPassHandle = VK_NULL_HANDLE;
     checkResult(vkCreateRenderPass(deviceView.deviceHandle, &passInfo, nullptr, &createdPassHandle), "swapchain: vkCreateRenderPass");
-    renderPassHandle = createdPassHandle;
-    std::puts("Created render pass");
+    resources.renderPassHandle = createdPassHandle;
+    reportSwapchainResource("Created", "render pass", resources.generation, reinterpret_cast<void*>(resources.renderPassHandle));
+#ifdef ZL_RENDERER_TESTING
+    runSwapchainTestCheckpoint("render-pass", resources.generation);
+#endif
 }
 
-void VulkanPresenter::createSwapchain(VkExtent2D framebufferExtent) {
-    auto support = querySurfaceSupport(deviceView.physicalDeviceHandle, deviceView.surfaceHandle);
-#ifdef ZL_RENDERER_TESTING
-    if (isVulkanTestCase("fifo") || isVulkanTestCase("fifo-window")) {
-        // FIFO is mandatory for ordinary surfaces; still select from the real supported list.
-        std::erase(support.presentModes, VK_PRESENT_MODE_MAILBOX_KHR);
-    }
-#endif
-    const auto configuration = selectSwapchainConfiguration(support, framebufferExtent, deviceView.queueFamilies);
+std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwapchain(
+    const SwapchainConfiguration& configuration, VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle) {
+    auto resources = std::make_unique<SwapchainResources>(deviceView.deviceHandle, swapchainGeneration + 1);
     VkSwapchainCreateInfoKHR swapchainInfo{};
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.surface = deviceView.surfaceHandle;
@@ -137,26 +174,42 @@ void VulkanPresenter::createSwapchain(VkExtent2D framebufferExtent) {
     swapchainInfo.compositeAlpha = configuration.compositeAlpha;
     swapchainInfo.presentMode = configuration.presentMode;
     swapchainInfo.clipped = VK_TRUE;
+    swapchainInfo.oldSwapchain = oldSwapchainHandle;
+#ifdef ZL_RENDERER_TESTING
+    std::printf("Swapchain create generation=%u old=%p\n", resources->generation, reinterpret_cast<void*>(oldSwapchainHandle));
+#endif
+    if (swapchainResources) { swapchainResources->retired = true; }
     VkSwapchainKHR createdSwapchainHandle = VK_NULL_HANDLE;
-    checkResult(vkCreateSwapchainKHR(deviceView.deviceHandle, &swapchainInfo, nullptr, &createdSwapchainHandle),
-                "swapchain: vkCreateSwapchainKHR");
-    swapchainHandle = createdSwapchainHandle;
-    ++swapchainGeneration;
-    renderExtent = configuration.extent;
-    lastFramebufferExtent = framebufferExtent;
-    std::puts("Created swapchain");
+    VkResult createResult;
+#ifdef ZL_RENDERER_TESTING
+    if (oldSwapchainHandle && isVulkanTestCase("rebuild-create")) {
+        std::puts("Injected replacement create failure before actual call; host retirement control only");
+        createResult = VK_ERROR_INITIALIZATION_FAILED;
+    } else
+#endif
+    { createResult = vkCreateSwapchainKHR(deviceView.deviceHandle, &swapchainInfo, nullptr, &createdSwapchainHandle); }
+    checkResult(createResult, "swapchain: vkCreateSwapchainKHR");
+    resources->swapchainHandle = createdSwapchainHandle;
+
+    resources->renderExtent = configuration.extent;
+    resources->framebufferExtent = framebufferExtent;
+    reportSwapchainResource("Created", "swapchain", resources->generation, reinterpret_cast<void*>(resources->swapchainHandle));
+#ifdef ZL_RENDERER_TESTING
+    std::printf("Swapchain created generation=%u handle=%p old=%p\n", resources->generation,
+                reinterpret_cast<void*>(resources->swapchainHandle), reinterpret_cast<void*>(oldSwapchainHandle));
+#endif
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("swapchain", VK_NULL_HANDLE);
-    if (swapchainGeneration > 1) { runVulkanTestCheckpoint("rebuild-failure", VK_NULL_HANDLE); }
+    if (resources->generation > 1) { runVulkanTestCheckpoint("rebuild-failure", VK_NULL_HANDLE); }
 #endif
-    const auto imageHandles = enumerateProperties<VkImage>([this](auto* count, auto* handles) {
-        return vkGetSwapchainImagesKHR(deviceView.deviceHandle, swapchainHandle, count, handles);
+    const auto imageHandles = enumerateProperties<VkImage>([this, &resources](auto* count, auto* handles) {
+        return vkGetSwapchainImagesKHR(deviceView.deviceHandle, resources->swapchainHandle, count, handles);
     }, "swapchain: vkGetSwapchainImagesKHR");
     if (imageHandles.empty()) { throw std::runtime_error("swapchain: no images returned."); }
-    images.resize(imageHandles.size());
-    createRenderPass(configuration.surfaceFormat.format);
-    for (std::size_t imageIndex = 0; imageIndex < images.size(); ++imageIndex) {
-        auto& image = images[imageIndex];
+    resources->images.resize(imageHandles.size());
+    createRenderPass(*resources, configuration.surfaceFormat.format);
+    for (std::size_t imageIndex = 0; imageIndex < resources->images.size(); ++imageIndex) {
+        auto& image = resources->images[imageIndex];
         image.imageHandle = imageHandles[imageIndex];
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -167,36 +220,39 @@ void VulkanPresenter::createSwapchain(VkExtent2D framebufferExtent) {
         VkImageView createdViewHandle = VK_NULL_HANDLE;
         checkResult(vkCreateImageView(deviceView.deviceHandle, &viewInfo, nullptr, &createdViewHandle), "swapchain: vkCreateImageView");
         image.imageViewHandle = createdViewHandle;
-        std::puts("Created image view");
+        reportSwapchainResource("Created", "image view", resources->generation, reinterpret_cast<void*>(image.imageViewHandle));
 #ifdef ZL_RENDERER_TESTING
-        runVulkanTestCheckpoint("image-view", VK_NULL_HANDLE);
+        runSwapchainTestCheckpoint("image-view", resources->generation);
 #endif
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = renderPassHandle;
+        framebufferInfo.renderPass = resources->renderPassHandle;
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = &image.imageViewHandle;
-        framebufferInfo.width = renderExtent.width;
-        framebufferInfo.height = renderExtent.height;
+        framebufferInfo.width = resources->renderExtent.width;
+        framebufferInfo.height = resources->renderExtent.height;
         framebufferInfo.layers = 1;
         VkFramebuffer createdFramebufferHandle = VK_NULL_HANDLE;
         checkResult(vkCreateFramebuffer(deviceView.deviceHandle, &framebufferInfo, nullptr, &createdFramebufferHandle),
                     "swapchain: vkCreateFramebuffer");
         image.framebufferHandle = createdFramebufferHandle;
-        std::puts("Created framebuffer");
+        reportSwapchainResource("Created", "framebuffer", resources->generation, reinterpret_cast<void*>(image.framebufferHandle));
 #ifdef ZL_RENDERER_TESTING
-        runVulkanTestCheckpoint("framebuffer", VK_NULL_HANDLE);
+        runSwapchainTestCheckpoint("framebuffer", resources->generation);
 #endif
         image.renderFinishedSemaphore = createSemaphore(deviceView.deviceHandle);
-        std::puts("Created present semaphore");
+        reportSwapchainResource("Created", "present semaphore", resources->generation, reinterpret_cast<void*>(image.renderFinishedSemaphore));
+#ifdef ZL_RENDERER_TESTING
+        runSwapchainTestCheckpoint("present-semaphore", resources->generation);
+#endif
     }
-    rebuildRequested = false;
     std::printf("Swapchain generation=%u mode=%s format=%d colorSpace=%d extent=%ux%u images=%zu sharing=%s%s\n",
-                swapchainGeneration, configuration.presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "MAILBOX" : "FIFO",
+                resources->generation, configuration.presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "MAILBOX" : "FIFO",
                 configuration.surfaceFormat.format, configuration.surfaceFormat.colorSpace,
-                renderExtent.width, renderExtent.height, images.size(),
+                resources->renderExtent.width, resources->renderExtent.height, resources->images.size(),
                 configuration.sharingMode == VK_SHARING_MODE_EXCLUSIVE ? "EXCLUSIVE" : "CONCURRENT",
                 configuration.presentMode == VK_PRESENT_MODE_FIFO_KHR ? " (MAILBOX unavailable in selection)" : "");
+    return resources;
 }
 
 void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageResources& image) {
@@ -211,9 +267,9 @@ void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageR
     const VkClearValue clearValue{{{clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha}}};
     VkRenderPassBeginInfo passInfo{};
     passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    passInfo.renderPass = renderPassHandle;
+    passInfo.renderPass = swapchainResources->renderPassHandle;
     passInfo.framebuffer = image.framebufferHandle;
-    passInfo.renderArea.extent = renderExtent;
+    passInfo.renderArea.extent = swapchainResources->renderExtent;
     passInfo.clearValueCount = 1;
     passInfo.pClearValues = &clearValue;
     vkCmdBeginRenderPass(frame.commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -222,16 +278,21 @@ void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageR
 }
 
 void VulkanPresenter::renderFrame() {
-    int framebufferWidth = 0;
-    int framebufferHeight = 0;
-    glfwGetFramebufferSize(windowHandle, &framebufferWidth, &framebufferHeight);
-    if (framebufferWidth <= 0 || framebufferHeight <= 0 || glfwGetWindowAttrib(windowHandle, GLFW_ICONIFIED) == GLFW_TRUE) { return; }
-    const VkExtent2D framebufferExtent{static_cast<std::uint32_t>(framebufferWidth), static_cast<std::uint32_t>(framebufferHeight)};
+    const auto state = readWindowState("frame");
+    if (state.closing) { return; }
+    if (state.iconified || state.framebufferExtent.width == 0 || state.framebufferExtent.height == 0) {
+        setPresentationPaused(true, "minimized/zero framebuffer");
+        return;
+    }
 #ifdef ZL_RENDERER_TESTING
-    if (isVulkanTestCase("rebuild-failure") && submittedFrames == 3) { rebuildRequested = true; }
+    if (shouldRequestSwapchainTestRebuild(submittedFrames, swapchainGeneration)) { rebuildRequested = true; }
 #endif
-    if (!swapchainHandle || rebuildRequested || framebufferExtent.width != lastFramebufferExtent.width ||
-        framebufferExtent.height != lastFramebufferExtent.height) { rebuildSwapchain(framebufferExtent); }
+    if (!swapchainResources || rebuildRequested || state.framebufferExtent.width != swapchainResources->framebufferExtent.width ||
+        state.framebufferExtent.height != swapchainResources->framebufferExtent.height) {
+        if (!rebuildSwapchain()) { return; }
+    }
+    setPresentationPaused(false, "ready");
+    if (swapchainResources->retired) { throw std::runtime_error("acquire: cannot use a retired swapchain."); }
     auto& frame = frames[frameIndex];
     auto waitResult = vkWaitForFences(deviceView.deviceHandle, 1, &frame.submissionFence, VK_TRUE, frameWaitNanoseconds);
 #ifdef ZL_RENDERER_TESTING
@@ -250,7 +311,7 @@ void VulkanPresenter::renderFrame() {
         std::printf("Injected acquire result=%d before actual acquisition\n", acquireResult);
     } else
 #endif
-    { acquireResult = vkAcquireNextImageKHR(deviceView.deviceHandle, swapchainHandle, frameWaitNanoseconds,
+    { acquireResult = vkAcquireNextImageKHR(deviceView.deviceHandle, swapchainResources->swapchainHandle, frameWaitNanoseconds,
                                             frame.imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex); }
 #ifdef ZL_RENDERER_TESTING
     if (acquireResult == VK_SUCCESS && !testInjectionUsed && isVulkanTestCase("acquire-suboptimal")) {
@@ -265,7 +326,7 @@ void VulkanPresenter::renderFrame() {
         checkResult(acquireResult, "acquire: vkAcquireNextImageKHR");
     }
     if (acquireResult == VK_SUBOPTIMAL_KHR) { rebuildRequested = true; std::puts("Rebuild requested: acquire SUBOPTIMAL"); }
-    const auto& image = images.at(imageIndex);
+    const auto& image = swapchainResources->images.at(imageIndex);
     recordClearFrame(frame, image);
     const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo{};
@@ -289,6 +350,8 @@ void VulkanPresenter::renderFrame() {
     ++submittedFrames;
 #ifdef ZL_RENDERER_TESTING
     if (submittedFrames <= 12) {
+        std::printf("Frame attachments generation=%u framebuffer=%p renderPass=%p\n", swapchainGeneration,
+                    reinterpret_cast<void*>(image.framebufferHandle), reinterpret_cast<void*>(swapchainResources->renderPassHandle));
         std::printf("Frame submitted slot=%u image=%u command=%p acquire=%p present=%p fence=%p generation=%u\n", frameIndex, imageIndex,
                     static_cast<void*>(frame.commandBufferHandle), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
                     reinterpret_cast<void*>(image.renderFinishedSemaphore), reinterpret_cast<void*>(frame.submissionFence), swapchainGeneration);
@@ -300,7 +363,7 @@ void VulkanPresenter::renderFrame() {
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = &image.renderFinishedSemaphore;
     presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchainHandle;
+    presentInfo.pSwapchains = &swapchainResources->swapchainHandle;
     presentInfo.pImageIndices = &imageIndex;
     auto presentResult = vkQueuePresentKHR(deviceView.presentQueueHandle, &presentInfo);
 #ifdef ZL_RENDERER_TESTING
@@ -333,46 +396,90 @@ VkResult VulkanPresenter::waitForSubmissions() noexcept {
     return waitResult;
 }
 
-void VulkanPresenter::rebuildSwapchain(VkExtent2D framebufferExtent) {
+bool VulkanPresenter::rebuildSwapchain() {
+    rebuildRequested = true;
     std::puts("Rebuilding swapchain");
     checkResult(waitForSubmissions(), "rebuild: vkDeviceWaitIdle");
     for (const auto& frame : frames) {
         checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "rebuild: vkResetCommandPool");
     }
-    releaseSwapchain();
-    createSwapchain(framebufferExtent);
+    if (swapchainResources && swapchainResources->retired) {
+        throw std::runtime_error("rebuild: cannot replace a retired swapchain.");
+    }
+#ifdef ZL_RENDERER_TESTING
+    runPresentationPreparationTest(windowHandle, submittedFrames);
+#endif
+    glfwPollEvents();
+    const auto state = readWindowState("rebuild");
+    if (state.closing) { return false; }
+    if (state.iconified || state.framebufferExtent.width == 0 || state.framebufferExtent.height == 0) {
+        setPresentationPaused(true, "minimized/zero framebuffer");
+        return false;
+    }
+    const auto framebufferExtent = state.framebufferExtent;
+    auto support = querySurfaceSupport(deviceView.physicalDeviceHandle, deviceView.surfaceHandle);
+#ifdef ZL_RENDERER_TESTING
+    applySurfaceExtentTest(support.capabilities, submittedFrames);
+    if (isVulkanTestCase("fifo") || isVulkanTestCase("fifo-window")) {
+        std::erase(support.presentModes, VK_PRESENT_MODE_MAILBOX_KHR);
+    }
+#endif
+    const auto selectedExtent = selectSwapchainExtent(support.capabilities, framebufferExtent);
+    if (selectedExtent.width == 0 || selectedExtent.height == 0) {
+        setPresentationPaused(true, "zero surface extent");
+        glfwWaitEventsTimeout(0.1);
+        return false;
+    }
+    const auto configuration = selectSwapchainConfiguration(support, framebufferExtent, deviceView.queueFamilies);
+    auto candidate = createSwapchain(configuration, framebufferExtent,
+        swapchainResources ? swapchainResources->swapchainHandle : VK_NULL_HANDLE);
+    swapchainResources.swap(candidate); // Unique ownership; candidate now cleans up the retired generation.
+    swapchainGeneration = swapchainResources->generation;
+    rebuildRequested = false;
+    std::printf("Swapchain ready generation=%u framebuffer=%ux%u extent=%ux%u submitted=%llu presented=%llu\n",
+                swapchainGeneration, framebufferExtent.width, framebufferExtent.height,
+                swapchainResources->renderExtent.width, swapchainResources->renderExtent.height,
+                static_cast<unsigned long long>(submittedFrames), static_cast<unsigned long long>(presentedFrames));
+#ifdef ZL_RENDERER_TESTING
+    std::printf("Swapchain published generation=%u handle=%p\n", swapchainGeneration,
+                reinterpret_cast<void*>(swapchainResources->swapchainHandle));
+#endif
+    return true;
 }
 
-void VulkanPresenter::releaseSwapchain() noexcept {
-    for (auto& image : images) {
+void VulkanPresenter::releaseSwapchain(SwapchainResources& resources) noexcept {
+    for (auto& image : resources.images) {
         if (image.framebufferHandle) {
-            vkDestroyFramebuffer(deviceView.deviceHandle, image.framebufferHandle, nullptr);
-            std::puts("Released framebuffer");
+            vkDestroyFramebuffer(resources.deviceHandle, image.framebufferHandle, nullptr);
+            reportSwapchainResource("Released", "framebuffer", resources.generation, reinterpret_cast<void*>(image.framebufferHandle));
+            image.framebufferHandle = VK_NULL_HANDLE;
         }
     }
-    for (auto& image : images) {
+    for (auto& image : resources.images) {
         if (image.imageViewHandle) {
-            vkDestroyImageView(deviceView.deviceHandle, image.imageViewHandle, nullptr);
-            std::puts("Released image view");
+            vkDestroyImageView(resources.deviceHandle, image.imageViewHandle, nullptr);
+            reportSwapchainResource("Released", "image view", resources.generation, reinterpret_cast<void*>(image.imageViewHandle));
+            image.imageViewHandle = VK_NULL_HANDLE;
         }
     }
-    if (renderPassHandle) {
-        vkDestroyRenderPass(deviceView.deviceHandle, renderPassHandle, nullptr);
-        renderPassHandle = VK_NULL_HANDLE;
-        std::puts("Released render pass");
+    if (resources.renderPassHandle) {
+        vkDestroyRenderPass(resources.deviceHandle, resources.renderPassHandle, nullptr);
+        reportSwapchainResource("Released", "render pass", resources.generation, reinterpret_cast<void*>(resources.renderPassHandle));
+        resources.renderPassHandle = VK_NULL_HANDLE;
     }
-    for (auto& image : images) {
+    for (auto& image : resources.images) {
         if (image.renderFinishedSemaphore) {
-            vkDestroySemaphore(deviceView.deviceHandle, image.renderFinishedSemaphore, nullptr);
-            std::puts("Released present semaphore");
+            vkDestroySemaphore(resources.deviceHandle, image.renderFinishedSemaphore, nullptr);
+            reportSwapchainResource("Released", "present semaphore", resources.generation, reinterpret_cast<void*>(image.renderFinishedSemaphore));
+            image.renderFinishedSemaphore = VK_NULL_HANDLE;
         }
     }
-    images.clear();
-    if (swapchainHandle) {
+    resources.images.clear();
+    if (resources.swapchainHandle) {
         // Base WSI WaitIdle cleanup limitation is documented in ARCHITECTURE.md.
-        vkDestroySwapchainKHR(deviceView.deviceHandle, swapchainHandle, nullptr);
-        swapchainHandle = VK_NULL_HANDLE;
-        std::puts("Released swapchain");
+        vkDestroySwapchainKHR(resources.deviceHandle, resources.swapchainHandle, nullptr);
+        reportSwapchainResource("Released", "swapchain", resources.generation, reinterpret_cast<void*>(resources.swapchainHandle));
+        resources.swapchainHandle = VK_NULL_HANDLE;
     }
 }
 
@@ -385,7 +492,7 @@ void VulkanPresenter::releaseResources() noexcept {
             std::puts("Released command pool");
         }
     }
-    releaseSwapchain();
+    swapchainResources.reset();
     for (auto& frame : frames) {
         if (frame.imageAvailableSemaphore) {
             vkDestroySemaphore(deviceView.deviceHandle, frame.imageAvailableSemaphore, nullptr);

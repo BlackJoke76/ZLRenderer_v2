@@ -58,6 +58,20 @@ bool supportsClearPresentation(const SurfaceSupport& support) {
            selectSurfaceFormat(support.formats).has_value() && selectPresentMode(support.presentModes).has_value();
 }
 
+VkExtent2D selectSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebufferExtent) {
+    if (framebufferExtent.width == 0 || framebufferExtent.height == 0) { return {}; }
+    if (capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
+        return capabilities.currentExtent;
+    }
+    if (capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0) { return {}; }
+    if (capabilities.minImageExtent.width > capabilities.maxImageExtent.width ||
+        capabilities.minImageExtent.height > capabilities.maxImageExtent.height) {
+        throw std::runtime_error("swapchain: inconsistent surface extent bounds.");
+    }
+    return {std::clamp(framebufferExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp(framebufferExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
+}
+
 SwapchainConfiguration selectSwapchainConfiguration(const SurfaceSupport& support, VkExtent2D framebufferExtent,
                                                     const QueueFamilySelection& families) {
     if (!supportsClearPresentation(support)) { throw std::runtime_error("swapchain: no clear presentation configuration."); }
@@ -68,12 +82,9 @@ SwapchainConfiguration selectSwapchainConfiguration(const SurfaceSupport& suppor
     configuration.surfaceFormat = *selectSurfaceFormat(support.formats);
     configuration.presentMode = *selectPresentMode(support.presentModes);
     const auto& capabilities = support.capabilities;
-    configuration.extent = capabilities.currentExtent;
-    if (capabilities.currentExtent.width == std::numeric_limits<std::uint32_t>::max()) {
-        configuration.extent = {std::clamp(framebufferExtent.width, capabilities.minImageExtent.width,
-                                          capabilities.maxImageExtent.width),
-                                std::clamp(framebufferExtent.height, capabilities.minImageExtent.height,
-                                          capabilities.maxImageExtent.height)};
+    configuration.extent = selectSwapchainExtent(capabilities, framebufferExtent);
+    if (configuration.extent.width == 0 || configuration.extent.height == 0) {
+        throw std::runtime_error("swapchain: zero surface extent must be deferred.");
     }
     configuration.imageCount = capabilities.minImageCount + 1;
     if (capabilities.maxImageCount != 0) {

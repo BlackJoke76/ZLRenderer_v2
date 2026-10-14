@@ -56,7 +56,10 @@ if(BUILD_TESTING)
     endforeach()
     foreach(testCase normal fifo alternate invalid-color nonfinite-color frame-resources swapchain image-view framebuffer
             fence-timeout acquire-timeout acquire-out-of-date acquire-suboptimal present-out-of-date present-suboptimal
-            record submit rebuild-failure surface-lost present-failure wait-failure)
+            record submit rebuild-failure surface-lost present-failure wait-failure
+            old-chain rebuild-create rebuild-render-pass rebuild-image-view rebuild-framebuffer rebuild-present-semaphore
+            prepare-resize prepare-close prepare-zero prepare-iconified initial-zero initial-iconified initial-zero-close
+            surface-zero surface-variable-zero surface-width-zero)
         add_test(NAME presentation-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
             "-DtestCase=${testCase}"

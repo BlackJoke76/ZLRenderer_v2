@@ -44,11 +44,11 @@ ctest --test-dir build -C Release --output-on-failure
 
 要验证从头构建，使用新的目录（例如将以上 `build` 替换为 `build-clean`），避免依赖已有构建缓存。初始化、窗口创建或运行失败会向标准错误输出阶段和原因，并返回非零退出码。
 
-CTest 默认开启，目前共 34 项：队列/交换链选择策略，以及实际 Vulkan 上的初始化回滚、诊断、帧槽复用、FIFO、替代颜色、资源回滚、超时、重建与错误控制子进程测试。需满足上述 SDK、驱动及桌面条件。故障注入只在 `vulkanLifecycleTests` 目标编译，正常应用没有注入开关。只构建应用可在配置时指定 `-DBUILD_TESTING=OFF`。
+CTest 默认开启，目前共 50 项：队列/交换链选择策略，以及实际 Vulkan 上的初始化回滚、诊断、帧槽复用、FIFO、替代颜色、资源回滚、超时、重建与错误控制子进程测试；新增连续 oldSwapchain 参数链、候选各阶段失败、等待后尺寸变化/关闭和受控零 framebuffer/iconified/surface extent。需满足上述 SDK、驱动及桌面条件。故障注入只在 `vulkanLifecycleTests` 目标编译，正常应用没有注入开关。只构建应用可在配置时指定 `-DBUILD_TESTING=OFF`。
 
 清屏颜色在 `src/main.cpp` 中初始化 `RhiConfig rendererConfig` 时指定，例如 `rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};`，重新编译后生效；分量必须有限且位于 [0,1]。颜色编码依据实际所选格式，配置无需修改帧同步代码。
 
-可重复的可见窗口验收（每次至少持续 10 秒；客户区截图和9点颜色采样、反复缩放、最小化恢复、系统关闭与资源计数）：
+可重复的可见窗口验收（每次至少持续 10 秒；逐次匹配实际客户区与 framebuffer/extent 日志后截图和25点内部/边缘颜色采样、反复/快速缩放收敛、三次最小化恢复、系统关闭与资源计数）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -executablePath .\build\Debug\zlRenderer.exe
@@ -56,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -executablePath .\build\Debug\zlRenderer.exe -closeWhileMinimized -logDirectory .\build\Debug\minimized-close-logs
 ```
 
-脚本保存完整 stdout/stderr、客户区 PNG 和 verification.txt 到对应配置目录的 `window-logs`；CTest 日志在 `build/test-logs/<配置>/`。脚本向自己启动的窗口发送标题栏对应的 SC_CLOSE，未模拟鼠标点击。需要可见、未遮挡的交互桌面；像素自动检查支持 B8/R8 的 UNORM/SRGB 四种格式，其他格式需人工核验截图。
+脚本保存完整 stdout/stderr、客户区 PNG 和 verification.txt 到对应配置目录的 `window-logs`；CTest 日志在 `build/test-logs/<配置>/`。暂停/恢复快照要求 submitted/presented 计数不变，恢复后的下一阶段必须有帧推进；稳定尺寸期间不重复重建。`-closeWhileMinimized` 在三次恢复后再次最小化并关闭，最终帧摘要必须等于最后暂停快照。脚本只将自己启动的验收窗口置顶以减少截图遮挡，并向该窗口发送标题栏对应的 SC_CLOSE，未模拟鼠标点击。需要可交互桌面，多个窗口验收顺序运行；像素自动检查支持 B8/R8 的 UNORM/SRGB 四种格式，其他格式需人工核验截图。客户区几何和 GDI 截图在同一 per-monitor v2 线程 DPI 上下文执行，恢复/缩放日志匹配后等待桌面动画稳定再采样。
 
 ## 诊断与退出
 
@@ -90,7 +90,9 @@ Debug/Release 均启用基础 validation。窗口脚本只给其子进程设置 
 
 本机 surface 实际不支持 MAILBOX，验收为 FIFO；MAILBOX 优先由合成策略测试验证。分族 sharing 由合成输入与代码检查覆盖，本机实际为同族 0，不能视为分族硬件实测。
 
-交换链重建与退出允许低频 `vkDeviceWaitIdle`，稳定帧只等待当前帧槽。基础 WSI 的 WaitIdle 只证明 GPU 提交完成，不能严格证明呈现引擎已释放交换链/呈现信号量；本阶段保留这一已记录限制，未启用 maintenance1/present fence。详见 ARCHITECTURE。
+交换链重建使用当前未退役链作为 `oldSwapchain`：等待旧 GPU 工作并解除命令引用，重读窗口事件及 framebuffer 像素尺寸，完成新交换链与全部附件后切换并清理旧代。最小化/零 extent 延迟创建并保留重建请求；同尺寸恢复没有待处理请求时继续复用，有请求则重建。新链创建调用后旧链退役，即使失败也不能回到旧链继续 acquire；失败明确非零退出并清理两代。
+
+交换链重建与退出允许低频 `vkDeviceWaitIdle`，稳定帧只等待当前帧槽。基础 WSI 的 WaitIdle 只证明 GPU 提交完成，不能严格证明呈现引擎已释放交换链/呈现信号量；oldSwapchain 参数也不能补足这一保证。本阶段保留这一已记录限制，未启用 maintenance1/present fence。详见 ARCHITECTURE。
 
 ## 项目文档
 

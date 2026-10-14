@@ -1,6 +1,6 @@
 # 实际进度
 
-当前活动 change：`handle-swapchain-resize`。2026-10-14 实施与验收通过，18/19 项已验证，剩余 Git 提交推送交付；未同步主规格或归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
+当前活动 change：`handle-swapchain-resize`。2026-10-14 实施、验收及 Git 交付通过，19/19 项完成；未同步主规格或归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 
@@ -26,7 +26,7 @@
 
 实际硬件仍为 RX 7900 XT、同族 0、FIFO、格式 50、3 图像/2 帧槽。MAILBOX、分族及跨代格式/图像数量变化保持合成/代码核查性质。保留原始具体 AMD loader 诊断，没有扩大过滤。基础 WSI WaitIdle 限制保持明示，oldSwapchain 不补足呈现引擎完成保证；扩展路径仍另行规划。
 
-交付目标当前已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`，main / origin/main。仅提交本 change 的源码、测试、规划、报告及文档；既有 `.agents/`、两个 `.gitkeep` 不纳入。提交推送结果完成后记录。
+交付目标已确认：`https://github.com/BlackJoke76/ZLRenderer_v2.git`，main / origin/main。实施提交 [`5921f80e7577a896b5a66c62c6e98769b6d48de7`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/5921f80e7577a896b5a66c62c6e98769b6d48de7) 已推送，git ls-remote 核对远程 SHA 一致。只提交本 change 的源码、测试、规划、报告及文档；既有 `.agents/`、两个 `.gitkeep` 保留。19/19任务与交付回执随本 change 的后续独立交接提交保存，最终回执 SHA 以 Git 历史及交付输出为准。
 
 ## present-clear-frame 验收与交接
 

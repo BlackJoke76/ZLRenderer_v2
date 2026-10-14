@@ -48,7 +48,7 @@ CTest 默认开启，目前共 50 项：队列/交换链选择策略，以及实
 
 清屏颜色在 `src/main.cpp` 中初始化 `RhiConfig rendererConfig` 时指定，例如 `rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};`，重新编译后生效；分量必须有限且位于 [0,1]。颜色编码依据实际所选格式，配置无需修改帧同步代码。
 
-可重复的可见窗口验收（每次至少持续 10 秒；逐次匹配实际客户区与 framebuffer/extent 日志后截图和25点内部/边缘颜色采样、反复/快速缩放收敛、三次最小化恢复、系统关闭与资源计数）：
+使用 Windows PowerShell（下列 `powershell` 命令）运行可重复的可见窗口验收：每次至少持续 10 秒；逐次匹配实际客户区与 framebuffer/extent 日志后截图和25点内部/边缘颜色采样、反复/快速缩放收敛、三次最小化恢复、系统关闭与资源计数。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -executablePath .\build\Debug\zlRenderer.exe

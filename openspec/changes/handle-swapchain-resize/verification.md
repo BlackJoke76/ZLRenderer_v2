@@ -85,4 +85,6 @@ ASan Release **50/50 CTest 通过**，汇总在 `build-resize-asan/ctest-Release
 
 首次沙箱构建未产生程序时曾提前启动 CTest，8 项因缺少可执行文件失败；改为正常外部 MSVC 构建完成后再测试。该启动失败不计为产品功能证据；最终完整两配置结果以上述日志为准。
 
-交付目标已核实：HTTPS origin `https://github.com/BlackJoke76/ZLRenderer_v2.git`，当前分支 main，上游 origin/main。只暂存本 change 的代码、测试、规划和文档，保留既有未跟踪 `.agents/` 与两个 `.gitkeep`。提交与远程同步结果在完成后记录；不提前声明 change 已完成。
+交付目标已核实：HTTPS origin `https://github.com/BlackJoke76/ZLRenderer_v2.git`，当前分支 main，上游 origin/main。实施提交 [`5921f80e7577a896b5a66c62c6e98769b6d48de7`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/5921f80e7577a896b5a66c62c6e98769b6d48de7) 已推送，git ls-remote 确认远程 main 与提交一致。19/19任务及交付回执随后用独立 handle-swapchain-resize 交接提交保存；只有本 change 相关成果入库，既有未跟踪 `.agents/` 与两个 `.gitkeep` 保留，未同步主规格/归档。
+
+交付复核将截图 C# 辅助方法统一为 getClientRectPixels/captureClient 小驼峰命名，Win32 对接函数保留外部 API 名称。这是只改内部方法名与调用的变更，使用与 README 相同的 Windows PowerShell 入口重新编译内嵌 C# 并检查脚本语法通过；原有五流程画面与状态验证对应的方法体保持不变。默认 pwsh/.NET Core 主机的试查因 System.Drawing 转发引用失败，未计作通过结果；此脚本的已验证入口为文档所列 powershell，不宣称 PowerShell 7 兼容。

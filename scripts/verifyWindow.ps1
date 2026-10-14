@@ -26,12 +26,12 @@ public static class WindowVerification {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr windowHandle, int command);
     [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr windowHandle, uint message, IntPtr firstParameter, IntPtr secondParameter, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr firstParameter, IntPtr secondParameter);
-    public static bool GetClientRectPixels(IntPtr windowHandle, out Rect rect) {
+    public static bool getClientRectPixels(IntPtr windowHandle, out Rect rect) {
         var previousContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
         try { return GetClientRect(windowHandle, out rect); }
         finally { if (previousContext != IntPtr.Zero) SetThreadDpiAwarenessContext(previousContext); }
     }
-    public static System.Drawing.Bitmap CaptureClient(IntPtr windowHandle) {
+    public static System.Drawing.Bitmap captureClient(IntPtr windowHandle) {
         // Set context inside the same managed call as all geometry/GDI calls: a PowerShell pipeline can change threads.
         var previousContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
         if (previousContext == IntPtr.Zero) throw new InvalidOperationException("Cannot set capture DPI context.");
@@ -67,7 +67,7 @@ function getLatestReady {
 function waitForMatchingExtent([IntPtr]$windowHandle, [string]$stage) {
     for ($extentAttempt = 0; $extentAttempt -lt 50; $extentAttempt++) {
         $clientRect = [WindowVerification+Rect]::new()
-        if (-not [WindowVerification]::GetClientRectPixels($windowHandle, [ref]$clientRect)) { throw 'Client area query failed.' }
+        if (-not [WindowVerification]::getClientRectPixels($windowHandle, [ref]$clientRect)) { throw 'Client area query failed.' }
         $readyRecord = getLatestReady
         $clientWidth = $clientRect.right - $clientRect.left
         $clientHeight = $clientRect.bottom - $clientRect.top
@@ -92,7 +92,7 @@ function assertClientColor([IntPtr]$windowHandle, [string]$stage, [int[]]$expect
     [void][WindowVerification]::SetForegroundWindow($windowHandle)
     [void](waitForMatchingExtent $windowHandle $stage)
     Start-Sleep -Milliseconds 400 # Let the desktop compositor finish window restore/resize animation.
-    $clientBitmap = [WindowVerification]::CaptureClient($windowHandle)
+    $clientBitmap = [WindowVerification]::captureClient($windowHandle)
     $clientWidth = $clientBitmap.Width
     $clientHeight = $clientBitmap.Height
     if ($clientWidth -le 0 -or $clientHeight -le 0) { throw 'Cannot sample zero client area.' }

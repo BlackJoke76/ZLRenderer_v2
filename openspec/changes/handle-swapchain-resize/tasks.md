@@ -31,7 +31,7 @@
 - [x] 4.3 对此次所有权与失败清理变更运行 MSVC ASan 的相关 CTest/窗口流程及静态分析；验证无主机内存问题/分析警告，可用时运行 UBSan，无可用工具时明确记录限制而不宣称通过。
 - [x] 4.4 写入本 change 的 verification.md，对全部 delta 场景逐项关联代码、测试和日志；验证 oldSwapchain 参数链、失败退役、暂停/恢复与基础 WSI 限制均有明确结论，执行 openspec validate handle-swapchain-resize --strict 与 git diff --check 通过。
 - [x] 4.5 根据实际验收更新 docs/STATUS.md、ROADMAP 与任务勾选；验证交接记录能还原本 change 的完成项、验证命令、证据路径、实际模式和未覆盖条件，无未经验证的完成声明。
-- [ ] 4.6 核对当前 remote、branch 和 upstream，仅暂存本 change 相关成果，使用含 handle-swapchain-resize 的独立提交并推送；验证暂存差异与验收一致、提交 SHA 及远程同步结果，报告目标分支和可核实的 GitHub 提交链接，保留其他工作区改动。
+- [x] 4.6 核对当前 remote、branch 和 upstream，仅暂存本 change 相关成果，使用含 handle-swapchain-resize 的独立提交并推送；验证暂存差异与验收一致、提交 SHA 及远程同步结果，报告目标分支和可核实的 GitHub 提交链接，保留其他工作区改动。
 
 ## Workflow follow-up
 

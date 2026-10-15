@@ -88,3 +88,68 @@ ASan Release **50/50 CTest 通过**，汇总在 `build-resize-asan/ctest-Release
 交付目标已核实：HTTPS origin `https://github.com/BlackJoke76/ZLRenderer_v2.git`，当前分支 main，上游 origin/main。实施提交 [`5921f80e7577a896b5a66c62c6e98769b6d48de7`](https://github.com/BlackJoke76/ZLRenderer_v2/commit/5921f80e7577a896b5a66c62c6e98769b6d48de7) 已推送，git ls-remote 确认远程 main 与提交一致。19/19任务及交付回执随后用独立 handle-swapchain-resize 交接提交保存；只有本 change 相关成果入库，既有未跟踪 `.agents/` 与两个 `.gitkeep` 保留，未同步主规格/归档。
 
 交付复核将截图 C# 辅助方法统一为 getClientRectPixels/captureClient 小驼峰命名，Win32 对接函数保留外部 API 名称。这是只改内部方法名与调用的变更，使用与 README 相同的 Windows PowerShell 入口重新编译内嵌 C# 并检查脚本语法通过；原有五流程画面与状态验证对应的方法体保持不变。默认 pwsh/.NET Core 主机的试查因 System.Drawing 转发引用失败，未计作通过结果；此脚本的已验证入口为文档所列 powershell，不宣称 PowerShell 7 兼容。
+
+## 2026-10-15 OpenSpec 复核
+
+复核基线：`dc4ec5a10ea7038db78f9bda07ca9e3817421361`，schema 为 spec-driven。重新读取 CLI 返回的 proposal、design、delta spec、tasks，识别相对 `f7045de` 的实施范围，并对照当前代码和原始运行证据检查；没有实施待办、修改产品代码、同步主规格或归档。
+
+### Summary scorecard
+
+| Dimension | Status |
+|---|---|
+| Completeness | Task Completion：19/19；Spec Coverage：4/4（3 MODIFIED、1 ADDED；无 REMOVED/RENAMED） |
+| Correctness | Requirement Implementation Mapping：4/4；Scenario Coverage：25/25，含实际窗口、真实 Vulkan 对象、受控结果、合成选择及明确的代码核查 |
+| Coherence | Design Adherence：5/5 决策；Code Pattern Consistency：通过，符合现有所有权、命名、函数复用与局部修改模式 |
+
+CRITICAL：0；WARNING：0；SUGGESTION：0。六项适用检查均完成，没有 Not verified 或部分检查项；没有以任务勾选代替代码/证据核查。
+
+### 完整性与正确性复核
+
+- 窗口恢复要求：核对 `src/vulkanPresenter.cpp:44`、`:60`、`:280`、`:399` 与 `src/main.cpp:59`。初始化、帧入口和 GPU 等待后重新判定状态；零 extent 延迟保持请求，关闭优先；成功 SUBOPTIMAL 获取先消费同步再替换。对应 prepare-resize/zero/iconified/close、initial-zero/iconified/zero-close、surface-zero/variable-zero/width-zero 及原有 WSI 结果测试重新通过。
+- 中断/错误要求：核对 `src/vulkanPresenter.cpp:179`、`:294`、`:341`、`:391`、`:450`、`:510`。已退役旧链不会再次获取或作为未退役前代使用；候选 RAII 清理与旧代清理分开，失败不等待未提交 fence。除全量测试外，逐一核对两配置六个重建故障用例 stderr 的实际失败阶段，共12项，防止只凭非零退出接受错误阶段失败。
+- 验证生命周期要求：核对 `scripts/verifyWindow.ps1:67`、`:91`、`:184`、`:207` 和诊断分类。四个新窗口流程各有九个截图阶段、每阶段25个内部/边缘采样点；暂停/恢复计数冻结、后续推进、稳定代数及5秒关闭上限均通过。确认诊断过滤两文件相对实施前未改动，新的应用诊断仍失败。
+- 整代重建要求：核对 `src/vulkanPresenter.h:33`、`src/vulkanPresenter.cpp:156`、`:399`、`:450`。以活动旧句柄创建，候选全部附件成功后才发布，旧代随后销毁；固定帧槽不迁入代集合。old-chain 真实连续两次替换，帧附件存活/已发布代断言、槽身份与逐对象释放检查均通过；配置变化使用合成选择与附件构造代码核查，没有宣称未实测硬件路径。
+- 本报告前述25场景矩阵逐行与 delta 场景标题、代码、测试/记录重新比对。异尺寸恢复的组合路径仍明确采用代码核查结合 prepare-resize 及实际窗口证据，不将其说成所有组合均已硬件实测。
+
+### 设计与代码模式复核
+
+| 设计决策 | 当前实现与结论 |
+|---|---|
+| 私有整代资源集合 | 不可复制 SwapchainResources + 当前/候选 unique_ptr，候选析构调用共享释放；两个帧槽独立，无原始句柄默认 move 复制所有权 |
+| oldSwapchain 退役及替换 | 初建空句柄；替换传有效前代；创建后旧链退役，候选不完整直接异常退出，不回滚 acquire；真实 old/new 调用顺序吻合 |
+| 尺寸轮询与延迟 | 保留逐帧采样，等待后 poll/复查；窗口暂停由 main wait events，surface 单独零 extent 有界等待；仅完整发布清请求 |
+| 帧外切换、保留同步 | 无图像 OUT_OF_DATE 不 reset fence；SUBOPTIMAL 消费真实 acquire；present 重建延至下一帧；没有逐帧 device/queue idle |
+| 按代与转换提供证据 | 生产低频诊断，测试目标独有句柄/故障记录；代码核查及新 Release 二进制确认无测试环境变量和逐帧注入标识；25点采样含边缘 |
+
+命名、目录和复用核对范围为已识别的 src、tests、CMake 与窗口脚本差异；外部 Win32/Vulkan API 名称保持要求的拼写，新增自有函数使用小驼峰。没有新增通用资源体系、多后端、渲染图或线程架构。
+
+### 本轮重新执行的验证
+
+新建独立目录 `build-resize-verify`，复用固定 GLFW 源码，保留原实施证据。VS/MSVC /W4 /WX 的 Debug/Release 构建均通过且无编译警告；各 **50/50 CTest** 通过，耗时分别37.50秒、39.30秒。配置、构建、CTest 汇总均在该目录，测试原始日志在 `test-logs/<配置>/`；测试目标明确启用 VK_EXT_layer_settings 同步 validation。
+
+```powershell
+cmake -S . -B build-resize-verify -G "Visual Studio 17 2022" -A x64 -DFETCHCONTENT_SOURCE_DIR_GLFW=build-present-clean/_deps/glfw-src
+cmake --build build-resize-verify --config Debug --parallel 2
+ctest --test-dir build-resize-verify -C Debug --output-on-failure
+cmake --build build-resize-verify --config Release --parallel 2
+ctest --test-dir build-resize-verify -C Release --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verifyWindow.ps1 -executablePath build-resize-verify/Debug/zlRenderer.exe -logDirectory build-resize-verify/window-logs/Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verifyWindow.ps1 -executablePath build-resize-verify/Debug/zlRenderer.exe -closeWhileMinimized -logDirectory build-resize-verify/minimized-close-logs/Debug
+```
+
+Release 窗口命令同样替换配置名执行。实际命令使用 VS 自带 cmake/ctest 的绝对路径；工具 PATH 设置见 README。
+
+| 本轮实际窗口流程 | submitted/presented | 代数 | 新证据目录 |
+|---|---|---|---|
+| Debug 三次恢复、可见关闭 | 2382/2382 | 9 | build-resize-verify/window-logs/Debug |
+| Debug 三次恢复后最小化关闭 | 2389/2389 | 9 | build-resize-verify/minimized-close-logs/Debug |
+| Release 三次恢复、可见关闭 | 2397/2397 | 9 | build-resize-verify/window-logs/Release |
+| Release 三次恢复后最小化关闭 | 2381/2381 | 9 | build-resize-verify/minimized-close-logs/Release |
+
+四次均退出0，自有资源创建/释放平衡，25点 RGB 63,89,124 采样通过，暂停/恢复计数一致，稳定状态不重复重建，无未知应用 validation/sync WARNING/ERROR。真实硬件仍是 RX 7900 XT、族0、FIFO、格式50、3图像/2帧槽。具体旧 AMD loader 诊断保留，不视为应用同步错误。
+
+历史 ASan 50/50与完整窗口、/analyze 无警告记录及实际编译参数已读取核对，本轮没有重跑这些工具；它们作为同一 C++ 实现的既有任务证据，不冒充本轮新运行。UBSan 仍按原工具可用性限制记录，未宣称通过。MAILBOX/分族/真实跨代格式数量变化的覆盖性质、基础 WSI 呈现完成限制均保持，不扩张验收含义。
+
+### Final assessment
+
+全部适用检查通过，可进入归档流程。本轮只更新验证报告与交接记录，不同步主规格或归档；工作区既有 `.agents/` 与两个 `.gitkeep` 保留。复核记录按项目授权独立提交推送 main，最终提交 SHA 和远程同步结果以 Git 交付输出为准。

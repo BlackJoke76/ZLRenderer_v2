@@ -102,3 +102,19 @@ Debug/Release 均启用基础 validation。窗口脚本只给其子进程设置 
 - [开发规则](AGENTS.md)
 
 OpenSpec 变更记录位于 `openspec/changes`；验收通过后按项目规则独立提交并推送。
+
+## Slang 三角形
+
+正常示例显示RGB插值三角形，背景由 `RhiConfig::clearColor` 控制。RHI 的 `content` 默认 `RenderContent::clearOnly`；示例显式使用 `RenderContent::triangle`，原清屏调用不需要shader文件。
+
+构建需要 `slangc`（本机验证版本 `2026.1-52-gc8ddf20bb`，Vulkan SDK 1.4.341.1自带）。CMake从SDK Bin或PATH发现，也可传 `-DslangCompiler="C:/VulkanSDK/1.4.341.1/Bin/slangc.exe"`。无效工具路径在配置时报错，源码编译失败使构建失败。两个入口以 `-target spirv -profile spirv_1_0 -emit-spirv-via-glsl` 编译，各自产物入口均为 `main`；使用 `SV_VulkanVertexID` 保持基础Vulkan 1.0兼容性。
+
+CMake按配置生成到 `build/<Debug或Release>/shaders/triangle.vert.spv` 与 `triangle.frag.spv`，两个应用目标共享编译规则。修改 `shaders/triangle.slang` 后重新构建即可更新，无修改不重编译。程序按exe位置读取旁边的shaders目录，可从任意cwd启动；复制应用时一并复制该目录。运行时不需要Slang DLL，不支持热重载。
+
+三角形窗口验收（Windows PowerShell）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verifyWindow.ps1 -executablePath build-triangle/Debug/zlRenderer.exe -content triangle -logDirectory build-triangle/window-logs/Debug
+```
+
+最小化关闭加 `-closeWhileMinimized`；仅清屏回归使用测试exe、`-testCase alternate-window`，保持默认 `-content clearOnly`。替代背景三角形使用测试exe和 `-testCase triangle-alternate-window -content triangle`。像素验收按实际SRGB/UNORM格式编码计算独立重心插值，以8个显示字节为容差覆盖量化及桌面截屏误差；内部采样远离边界，外部与边缘仍验背景，逐点期望和实际保存在verification.txt。

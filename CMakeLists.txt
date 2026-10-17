@@ -12,6 +12,32 @@ FetchContent_Declare(glfw
 )
 FetchContent_MakeAvailable(glfw)
 find_package(Vulkan REQUIRED)
+find_program(slangCompiler NAMES slangc HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
+execute_process(COMMAND "${slangCompiler}" -version RESULT_VARIABLE slangVersionResult OUTPUT_VARIABLE slangVersion ERROR_VARIABLE slangVersionError)
+if(NOT slangVersionResult EQUAL 0)
+    message(FATAL_ERROR "Invalid Slang compiler ${slangCompiler}: ${slangVersionError}")
+endif()
+message(STATUS "Slang: ${slangCompiler} ${slangVersion}${slangVersionError}")
+set(shaderOutputs)
+foreach(shaderStage vert frag)
+    if(shaderStage STREQUAL "vert")
+        set(shaderEntry vertexMain)
+        set(shaderStageName vertex)
+    else()
+        set(shaderEntry fragmentMain)
+        set(shaderStageName fragment)
+    endif()
+    set(shaderOutput "${CMAKE_BINARY_DIR}/$<CONFIG>/shaders/triangle.${shaderStage}.spv")
+    add_custom_command(OUTPUT "${shaderOutput}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/$<CONFIG>/shaders"
+        COMMAND "${slangCompiler}" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.slang"
+            -entry ${shaderEntry} -stage ${shaderStageName} -target spirv -profile spirv_1_0
+            -emit-spirv-via-glsl -o "${shaderOutput}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.slang" "${slangCompiler}" VERBATIM)
+    list(APPEND shaderOutputs "${shaderOutput}")
+endforeach()
+add_custom_target(triangleShaders DEPENDS ${shaderOutputs})
+
 
 function(configureCppTarget targetName)
     target_compile_features(${targetName} PRIVATE cxx_std_20)
@@ -24,13 +50,18 @@ function(configureCppTarget targetName)
     endif()
 endfunction()
 
-set(rendererSources src/main.cpp src/rhi.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
+set(rendererSources src/main.cpp src/shaderFile.cpp src/rhi.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
 add_executable(zlRenderer ${rendererSources})
 configureCppTarget(zlRenderer)
+add_dependencies(zlRenderer triangleShaders)
 target_link_libraries(zlRenderer PRIVATE glfw Vulkan::Vulkan)
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(shaderFileTests tests/shaderFileTests.cpp src/shaderFile.cpp)
+    configureCppTarget(shaderFileTests)
+    add_test(NAME shader-file COMMAND shaderFileTests)
+
     add_executable(queueSelectionTests tests/queueSelectionTests.cpp src/queueSelection.cpp)
     configureCppTarget(queueSelectionTests)
     add_test(NAME queue-selection COMMAND queueSelectionTests)
@@ -43,6 +74,7 @@ if(BUILD_TESTING)
     # Fault injection is compiled only into this separate test executable.
     add_executable(vulkanLifecycleTests ${rendererSources} tests/vulkanTestHooks.cpp)
     configureCppTarget(vulkanLifecycleTests)
+    add_dependencies(vulkanLifecycleTests triangleShaders)
     target_include_directories(vulkanLifecycleTests PRIVATE tests)
     target_compile_definitions(vulkanLifecycleTests PRIVATE ZL_RENDERER_TESTING)
     target_link_libraries(vulkanLifecycleTests PRIVATE glfw Vulkan::Vulkan)
@@ -59,7 +91,9 @@ if(BUILD_TESTING)
             record submit rebuild-failure surface-lost present-failure wait-failure
             old-chain rebuild-create rebuild-render-pass rebuild-image-view rebuild-framebuffer rebuild-present-semaphore
             prepare-resize prepare-close prepare-zero prepare-iconified initial-zero initial-iconified initial-zero-close
-            surface-zero surface-variable-zero surface-width-zero)
+            surface-zero surface-variable-zero surface-width-zero triangle triangle-rebuild
+            vertex-module fragment-module pipeline-layout graphics-pipeline
+            rebuild-vertex-module rebuild-fragment-module rebuild-pipeline-layout rebuild-graphics-pipeline)
         add_test(NAME presentation-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
             "-DtestCase=${testCase}"

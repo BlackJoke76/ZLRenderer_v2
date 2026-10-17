@@ -37,3 +37,11 @@ TIMEOUT/NOT_READY 跳帧；acquire OUT_OF_DATE 不reset fence，下次重建。�
 生产路径不开启故障环境开关。仅测试编译目标保留原初始化 checkpoint，新增候选各资源阶段、逐代对象/old-new 句柄及窗口状态控制。替换创建失败注入发生于实际 API 调用前，只验证 host 退役控制与清理，不宣称驱动真实失败/退役；附件失败在真实成功创建后注入。窗口状态/surface 零 extent 控制仅影响测试采样，不将伪造配置提交给驱动。测试目标可用时通过 VK_EXT_layer_settings 在 instance 创建明确启用 validate_sync；实际产品窗口验收进程使用 SDK 的 VK_LAYER_VALIDATE_SYNC=1。不更改全局配置。
 
 CTest 直接使用生产选择函数，逐次比较帧槽 command/acquire/fence 身份及按图像的 present semaphore，检查创建/释放数量、device 子资源先释放、故障阶段及退出结果。窗口脚本保存物理客户区截图、25点内部/边缘颜色采样、至少10秒连续运行、重复缩放、三轮最小化恢复/关闭、计数快照和原始诊断。截图几何与 GDI 采集在同一 per-monitor v2 线程上下文中完成，避免 PowerShell 线程切换及 DPI 虚拟化污染坐标，采集前留出桌面动画稳定时间。当前像素自动验证器支持 R8/B8 四种 UNORM/SRGB 格式，其他格式须截图人工核验。仅按两条具体既有 loader 消息归因，新应用诊断仍失败。
+
+## 固定Slang三角形
+
+RhiConfig显式选择内容，默认clearOnly，main选择triangle。共享recordFrame先按loadOp CLEAR清背景，三角形模式再设置当前extent的动态viewport/scissor、绑定graphics pipeline并vkCmdDraw(3,1,0,0)。固定顶点由Slang SV_VulkanVertexID生成，无buffer、descriptor、push constant、depth或额外submit/barrier；颜色附件和present依赖保持原路径。
+
+每代SwapchainResources持有render pass、graphics pipeline和空pipeline layout；候选代全部创建成功才发布。两个局部shader module只活到pipeline创建完成（含异常退出），不在热路径加载。重建继续使用oldSwapchain和原等待/命令引用解除流程，pipeline/layout在对应render pass前释放；每次必要重建创建一个pipeline，稳定帧无pipeline创建或额外WaitIdle。格式变化通过新代render pass和pipeline兼容，extent通过动态状态更新。基础WSI呈现完成限制保持原约定。
+
+shaderFile按exe位置定位shaders目录，以uint32_t存储读取的SPIR-V并核对长度、magic、1.0版本、bound和schema；这只是加载结构检查，不能替代spirv-val和驱动校验。构建产物经Slang GLSL中间后端生成，入口main与VkPipelineShaderStageCreateInfo::pName一致。仅清屏模式完全不加载这些资源。

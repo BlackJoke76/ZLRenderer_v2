@@ -11,3 +11,5 @@ void runPresentationPreparationTest(GLFWwindow* windowHandle, std::uint64_t subm
 void applyWindowStateTest(const char* stage, GLFWwindow* windowHandle, std::uint64_t submittedFrames,
     int& framebufferWidth, int& framebufferHeight, bool& iconified, bool& closing);
 void applySurfaceExtentTest(VkSurfaceCapabilitiesKHR& capabilities, std::uint64_t submittedFrames);
+
+bool isTriangleTestCase();

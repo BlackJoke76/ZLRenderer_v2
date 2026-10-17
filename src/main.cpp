@@ -47,8 +47,10 @@ int main() {
         }
 
         RhiConfig rendererConfig;
+        rendererConfig.content = RenderContent::triangle;
 #ifdef ZL_RENDERER_TESTING
-        if (isVulkanTestCase("alternate-window") || isVulkanTestCase("alternate")) {
+        rendererConfig.content = isTriangleTestCase() ? RenderContent::triangle : RenderContent::clearOnly;
+        if (isVulkanTestCase("alternate-window") || isVulkanTestCase("alternate") || isVulkanTestCase("triangle-alternate-window")) {
             rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};
         }
         if (isVulkanTestCase("invalid-color")) { rendererConfig.clearColor.red = -1.0f; }

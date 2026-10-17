@@ -1,7 +1,6 @@
 #include "vulkanPresenter.h"
 #include "swapchainSelection.h"
 #include "vulkanUtilities.h"
-#include "shaderFile.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <cstdio>
@@ -43,11 +42,10 @@ VulkanPresenter::~VulkanPresenter() noexcept {
 }
 
 void VulkanPresenter::initialize(GLFWwindow* requestedWindowHandle, const VulkanDeviceView& requestedDeviceView,
-                                 const RhiConfig& config) {
+                                 ClearColor requestedClearColor) {
     windowHandle = requestedWindowHandle;
     deviceView = requestedDeviceView;
-    clearColor = config.clearColor;
-    content = config.content;
+    clearColor = requestedClearColor;
     createFrameResources();
     const auto state = readWindowState("initialize");
     if (!state.closing && !state.iconified && state.framebufferExtent.width > 0 && state.framebufferExtent.height > 0) {
@@ -210,7 +208,6 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
     if (imageHandles.empty()) { throw std::runtime_error("swapchain: no images returned."); }
     resources->images.resize(imageHandles.size());
     createRenderPass(*resources, configuration.surfaceFormat.format);
-    if (content == RenderContent::triangle) { createTrianglePipeline(*resources); }
     for (std::size_t imageIndex = 0; imageIndex < resources->images.size(); ++imageIndex) {
         auto& image = resources->images[imageIndex];
         image.imageHandle = imageHandles[imageIndex];
@@ -258,99 +255,7 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
     return resources;
 }
 
-void VulkanPresenter::createTrianglePipeline(SwapchainResources& resources) {
-    struct ShaderModule {
-        VkDevice deviceHandle;
-        VkShaderModule shaderModuleHandle = VK_NULL_HANDLE;
-        ~ShaderModule() noexcept {
-            if (shaderModuleHandle) {
-                vkDestroyShaderModule(deviceHandle, shaderModuleHandle, nullptr);
-                std::puts("Released shader module");
-            }
-        }
-    };
-    const auto createModule = [&](ShaderModule& module, const char* fileName, const char* stage) {
-        const auto words = readShaderFile(getShaderDirectory() / fileName);
-        VkShaderModuleCreateInfo moduleInfo{};
-        moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        moduleInfo.codeSize = words.size() * sizeof(std::uint32_t);
-        moduleInfo.pCode = words.data();
-        checkResult(vkCreateShaderModule(resources.deviceHandle, &moduleInfo, nullptr, &module.shaderModuleHandle), stage);
-        std::puts("Created shader module");
-#ifdef ZL_RENDERER_TESTING
-        runSwapchainTestCheckpoint(stage, resources.generation);
-#endif
-    };
-    ShaderModule vertexModule{resources.deviceHandle};
-    ShaderModule fragmentModule{resources.deviceHandle};
-    createModule(vertexModule, "triangle.vert.spv", "vertex-module");
-    createModule(fragmentModule, "triangle.frag.spv", "fragment-module");
-    VkPipelineLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    checkResult(vkCreatePipelineLayout(resources.deviceHandle, &layoutInfo, nullptr, &resources.pipelineLayoutHandle), "pipeline-layout");
-    reportSwapchainResource("Created", "pipeline layout", resources.generation, reinterpret_cast<void*>(resources.pipelineLayoutHandle));
-#ifdef ZL_RENDERER_TESTING
-    runSwapchainTestCheckpoint("pipeline-layout", resources.generation);
-#endif
-    std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{};
-    for (auto& shaderStage : shaderStages) {
-        shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStage.pName = "main"; // Verified OpEntryPoint in each generated module.
-    }
-    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    shaderStages[0].module = vertexModule.shaderModuleHandle;
-    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    shaderStages[1].module = fragmentModule.shaderModuleHandle;
-    VkPipelineVertexInputStateCreateInfo vertexInput{};
-    vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    VkPipelineInputAssemblyStateCreateInfo assembly{};
-    assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    VkPipelineViewportStateCreateInfo viewport{};
-    viewport.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewport.viewportCount = 1;
-    viewport.scissorCount = 1;
-    VkPipelineRasterizationStateCreateInfo rasterization{};
-    rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterization.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterization.cullMode = VK_CULL_MODE_NONE;
-    rasterization.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rasterization.lineWidth = 1;
-    VkPipelineMultisampleStateCreateInfo multisample{};
-    multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    VkPipelineColorBlendAttachmentState colorAttachment{};
-    colorAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    VkPipelineColorBlendStateCreateInfo blend{};
-    blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    blend.attachmentCount = 1;
-    blend.pAttachments = &colorAttachment;
-    const std::array dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic{};
-    dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size());
-    dynamic.pDynamicStates = dynamicStates.data();
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = static_cast<std::uint32_t>(shaderStages.size());
-    pipelineInfo.pStages = shaderStages.data();
-    pipelineInfo.pVertexInputState = &vertexInput;
-    pipelineInfo.pInputAssemblyState = &assembly;
-    pipelineInfo.pViewportState = &viewport;
-    pipelineInfo.pRasterizationState = &rasterization;
-    pipelineInfo.pMultisampleState = &multisample;
-    pipelineInfo.pColorBlendState = &blend;
-    pipelineInfo.pDynamicState = &dynamic;
-    pipelineInfo.layout = resources.pipelineLayoutHandle;
-    pipelineInfo.renderPass = resources.renderPassHandle;
-    checkResult(vkCreateGraphicsPipelines(resources.deviceHandle, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &resources.graphicsPipelineHandle), "graphics-pipeline");
-    reportSwapchainResource("Created", "graphics pipeline", resources.generation, reinterpret_cast<void*>(resources.graphicsPipelineHandle));
-#ifdef ZL_RENDERER_TESTING
-    runSwapchainTestCheckpoint("graphics-pipeline", resources.generation);
-#endif
-}
-
-void VulkanPresenter::recordFrame(const FrameResources& frame, const ImageResources& image) {
+void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageResources& image) {
     checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "record: vkResetCommandPool");
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("record", VK_NULL_HANDLE);
@@ -368,21 +273,6 @@ void VulkanPresenter::recordFrame(const FrameResources& frame, const ImageResour
     passInfo.clearValueCount = 1;
     passInfo.pClearValues = &clearValue;
     vkCmdBeginRenderPass(frame.commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
-    if (content == RenderContent::triangle) {
-        const auto extent = swapchainResources->renderExtent;
-        const VkViewport viewport{0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height), 0, 1};
-        const VkRect2D scissor{{0, 0}, extent};
-        vkCmdSetViewport(frame.commandBufferHandle, 0, 1, &viewport);
-        vkCmdSetScissor(frame.commandBufferHandle, 0, 1, &scissor);
-        vkCmdBindPipeline(frame.commandBufferHandle, VK_PIPELINE_BIND_POINT_GRAPHICS, swapchainResources->graphicsPipelineHandle);
-        vkCmdDraw(frame.commandBufferHandle, 3, 1, 0, 0);
-#ifdef ZL_RENDERER_TESTING
-        if (submittedFrames < 12) {
-            std::printf("Triangle draw generation=%u pipeline=%p\n", swapchainResources->generation,
-                reinterpret_cast<void*>(swapchainResources->graphicsPipelineHandle));
-        }
-#endif
-    }
     vkCmdEndRenderPass(frame.commandBufferHandle);
     checkResult(vkEndCommandBuffer(frame.commandBufferHandle), "record: vkEndCommandBuffer");
 }
@@ -437,7 +327,7 @@ void VulkanPresenter::renderFrame() {
     }
     if (acquireResult == VK_SUBOPTIMAL_KHR) { rebuildRequested = true; std::puts("Rebuild requested: acquire SUBOPTIMAL"); }
     const auto& image = swapchainResources->images.at(imageIndex);
-    recordFrame(frame, image);
+    recordClearFrame(frame, image);
     const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -492,7 +382,7 @@ void VulkanPresenter::renderFrame() {
         std::printf("Rebuild requested: present result=%d\n", presentResult);
     } else { checkResult(presentResult, "present: vkQueuePresentKHR"); }
 #ifdef ZL_RENDERER_TESTING
-    if (submittedFrames >= 12 && !isVulkanTestCase("alternate-window") && !isVulkanTestCase("fifo-window") && !isVulkanTestCase("triangle-window") && !isVulkanTestCase("triangle-alternate-window")) {
+    if (submittedFrames >= 12 && !isVulkanTestCase("alternate-window") && !isVulkanTestCase("fifo-window")) {
         glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
     }
 #endif
@@ -558,16 +448,6 @@ bool VulkanPresenter::rebuildSwapchain() {
 }
 
 void VulkanPresenter::releaseSwapchain(SwapchainResources& resources) noexcept {
-    if (resources.graphicsPipelineHandle) {
-        vkDestroyPipeline(resources.deviceHandle, resources.graphicsPipelineHandle, nullptr);
-        reportSwapchainResource("Released", "graphics pipeline", resources.generation, reinterpret_cast<void*>(resources.graphicsPipelineHandle));
-        resources.graphicsPipelineHandle = VK_NULL_HANDLE;
-    }
-    if (resources.pipelineLayoutHandle) {
-        vkDestroyPipelineLayout(resources.deviceHandle, resources.pipelineLayoutHandle, nullptr);
-        reportSwapchainResource("Released", "pipeline layout", resources.generation, reinterpret_cast<void*>(resources.pipelineLayoutHandle));
-        resources.pipelineLayoutHandle = VK_NULL_HANDLE;
-    }
     for (auto& image : resources.images) {
         if (image.framebufferHandle) {
             vkDestroyFramebuffer(resources.deviceHandle, image.framebufferHandle, nullptr);

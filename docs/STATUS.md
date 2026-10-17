@@ -1,18 +1,14 @@
 # 实际进度
 
-2026-10-17，`render-slang-triangle`（spec-driven）已归档至 `openspec/changes/archive/2026-10-17-render-slang-triangle/`，当前无活动change。归档前核对11/11任务、全部规划产物完成，主规格triangle-rendering的6条需求、13个场景及Purpose与delta逐字一致，无待同步内容；5份主规格和change严格校验通过。6个归档文件（含 `.openspec.yaml`、verification.md）移动前后SHA256完全一致，清单在忽略目录 `build-triangle-verify/archive-manifest.json`。本次仅移动归档及更新交接文档，未改产品或重跑运行验收；下方历史段落保留当时状态。目标为已核实origin、main / origin/main，最终提交及远程SHA见Git输出。
+2026-10-17，按用户要求回滚 `render-slang-triangle`。以新的逆向提交撤销该change的实现、交付、独立复核、规格同步和归档五个提交（f2ee745、11878bf、3ace840、c5f8abf、b213ab3），保留Git历史；除本回滚交接记录外，所有受跟踪文件恢复到 `d5adb950dee00495af40f3581d88733d6eb87b21`，此前 `handle-swapchain-resize` 的oldSwapchain整代重建保持。Slang构建依赖、三角形代码、triangle-rendering主规格和该change归档文件已撤回，当前无活动change。
 
-2026-10-17，`render-slang-triangle` 已同步主规格：新增 `openspec/specs/triangle-rendering/spec.md`，6条要求、13个场景及Purpose与delta原文一致，其他4份主规格保持原样。change仍处于活动状态，11/11任务完成，未归档。此次仅同步规格和更新交接记录，沿用独立复核结论，不重复产品构建或窗口测试；下方实施/复核段落保留当时状态。提交推送目标仍为已核实的origin、main / origin/main，最终SHA见Git历史及交付输出。
-
-2026-10-17，`openspec-verify-change render-slang-triangle` 独立复核通过：11/11任务、6/6要求、13/13场景、5/5设计决策和代码模式一致性通过；0 critical / warning / suggestion，无适用检查跳过。新目录 `build-triangle-verify` Debug/Release无警告构建、各61/61 CTest（46.08/42.55秒）；新三角形可见/最小化关闭四流程和Release替代背景均通过（2421、2347、2369、2372、2231帧，各9代且pipeline创建释放平衡），25点颜色、三轮暂停恢复、5秒内退出0及应用validation/sync均核对。历史ASan、/analyze和构建失败证据已核对，本轮未重跑；实际FIFO同族硬件、合成覆盖及基础WSI限制不变。详见change verification.md独立复核章节；未同步或归档，仅提交复核报告及交接记录，最终推送SHA见Git输出。
-
-2026-10-17，实施时的活动 change：`render-slang-triangle`（现已归档）。Slang离线编译及固定RGB三角形已实施，原RHI默认clearOnly及原清屏回归保留。Debug/Release各61/61 CTest通过，三角形两配置可见/最小化关闭、Release替代背景与两配置清屏窗口均通过；原始证据见 `build-triangle`，场景映射见 `openspec/changes/archive/2026-10-17-render-slang-triangle/verification.md`。11/11任务完成，实施提交 `f2ee745da61e64644333d658fc4225cdacdb6271` 已推送 `main`，远程SHA已核对；ASan Release的61/61测试和三角形窗口2352/2352帧、9代通过，/analyze全部目标无警告，未发现可用UBSan工具链；未同步主规格或归档。Slang使用SV_VulkanVertexID、SPIR-V1.0及GLSL中间后端，实际模块经vulkan1.0校验；工具版本2026.1-52-gc8ddf20bb。RX7900XT仍为FIFO同族0，MAILBOX/分族及跨代格式变化保留合成/代码核查性质，基础WSI限制未改变。
+回滚验证：重新配置 `build-resize-verify`，Debug/Release无警告构建，各50/50 CTest通过（35.35/39.62秒）；4份保留主规格严格校验通过。Debug真实窗口正常关闭2361/2361帧、Release最小化关闭2386/2386帧，均9代，重复缩放/三轮最小化恢复、25点完整清屏、暂停计数冻结、5秒内退出0及资源平衡通过，无未知应用validation/sync WARNING/ERROR。新原始日志为该目录 `rollback-configure.log`、`rollback-build-<配置>.log`、`rollback-ctest-<配置>.log`、`rollback-window-logs/<配置>/`；未重跑ASan/静态分析。既有FIFO同族硬件、合成覆盖及基础WSI限制不变。提交推送目标为已核实的origin、main / origin/main，最终SHA见Git输出；原始三角形成果仍可通过历史提交恢复。既有未跟踪 `.agents/` 和两个 `.gitkeep` 保留。
 
 2026-10-17，`handle-swapchain-resize` 已同步主规格并归档至 `openspec/changes/archive/2026-10-17-handle-swapchain-resize/`（spec-driven）。`frame-presentation` 修改3条、新增1条需求，25个delta场景逐项一致；保留标题、Purpose及其余5条需求。4份主规格与归档前change严格校验通过，6个归档文件（含 `.openspec.yaml`）移动前后SHA256一致，19/19任务完成。此次仅同步规格、归档和更新交接文档，未重跑产品构建或窗口测试；2026-10-15复核结果及基础WSI限制继续有效。提交推送目标为已核实的 origin、main / origin/main，最终SHA以Git历史及交付输出为准。下方实施/复核段落保留当时状态。
 
 2026-10-15 最新复核：`openspec-verify-change handle-swapchain-resize` 通过。完整性19/19任务、4/4 delta要求；正确性25/25场景已核查；一致性5/5设计决策及代码模式通过，0 critical / warning / suggestion，无跳过检查。新建 `build-resize-verify`，Debug/Release 构建无警告且各50/50 CTest；两配置可见关闭和最小化关闭四个窗口流程均通过（2382/2382、2389/2389、2397/2397、2381/2381帧，各9代）。25点客户区/边缘采样、三轮暂停冻结/恢复推进、5秒内退出0、资源平衡及应用validation/sync诊断均已核对。新原始证据在该目录 `test-logs`、`window-logs`、`minimized-close-logs`；详见 change 的 verification.md 新增复核章节。历史ASan/静态分析证据已核对，本轮未重跑。FIFO同族硬件、合成覆盖及基础WSI限制保持明示；未同步主规格或归档。此次仅提交本change的复核报告和交接记录，最终提交/推送SHA见Git交付输出。
 
-最近完成 change：`handle-swapchain-resize`（已同步主规格并归档，归档时无活动 change）。2026-10-14 实施、验收及 Git 交付通过，19/19 项完成；2026-10-17 已同步主规格并归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
+最近完成 change：`handle-swapchain-resize`（已同步主规格并归档，当前无活动 change）。2026-10-14 实施、验收及 Git 交付通过，19/19 项完成；2026-10-17 已同步主规格并归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 

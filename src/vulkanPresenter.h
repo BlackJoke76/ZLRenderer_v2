@@ -14,7 +14,7 @@ public:
     ~VulkanPresenter() noexcept;
     VulkanPresenter(const VulkanPresenter&) = delete;
     VulkanPresenter& operator=(const VulkanPresenter&) = delete;
-    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, const RhiConfig& config);
+    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, ClearColor clearColor);
     void renderFrame();
     void shutdown();
 private:
@@ -39,8 +39,6 @@ private:
         std::uint32_t generation;
         VkSwapchainKHR swapchainHandle = VK_NULL_HANDLE;
         VkRenderPass renderPassHandle = VK_NULL_HANDLE;
-        VkPipelineLayout pipelineLayoutHandle = VK_NULL_HANDLE;
-        VkPipeline graphicsPipelineHandle = VK_NULL_HANDLE;
         VkExtent2D renderExtent{};
         VkExtent2D framebufferExtent{};
         std::vector<ImageResources> images;
@@ -57,8 +55,7 @@ private:
     std::unique_ptr<SwapchainResources> createSwapchain(const SwapchainConfiguration& configuration,
         VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle);
     void createRenderPass(SwapchainResources& resources, VkFormat colorFormat);
-    void createTrianglePipeline(SwapchainResources& resources);
-    void recordFrame(const FrameResources& frame, const ImageResources& image);
+    void recordClearFrame(const FrameResources& frame, const ImageResources& image);
     bool rebuildSwapchain();
     VkResult waitForSubmissions() noexcept;
     static void releaseSwapchain(SwapchainResources& resources) noexcept;
@@ -66,7 +63,6 @@ private:
     GLFWwindow* windowHandle = nullptr; // Borrowed; outlives this presenter.
     VulkanDeviceView deviceView{};
     ClearColor clearColor{};
-    RenderContent content = RenderContent::clearOnly;
     std::array<FrameResources, 2> frames{};
     std::unique_ptr<SwapchainResources> swapchainResources;
     std::uint32_t frameIndex = 0;

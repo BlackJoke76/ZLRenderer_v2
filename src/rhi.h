@@ -8,9 +8,7 @@ struct ClearColor {
     float blue = 0.20f;
     float alpha = 1.0f;
 };
-enum class RenderContent { clearOnly, triangle };
 struct RhiConfig {
-    RenderContent content = RenderContent::clearOnly;
     ClearColor clearColor{};
 };
 class VulkanBackend;

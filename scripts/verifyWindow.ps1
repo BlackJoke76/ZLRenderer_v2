@@ -1,10 +1,9 @@
 param(
     [Parameter(Mandatory=$true)][string]$executablePath,
     [string]$logDirectory,
-    [ValidateSet('clearOnly','triangle')][string]$content = 'clearOnly',
     [switch]$closeWhileMinimized,
     [ValidateRange(10,60)][int]$durationSeconds = 10,
-    [ValidateSet('', 'alternate-window', 'fifo-window', 'triangle-window', 'triangle-alternate-window')][string]$testCase = ''
+    [ValidateSet('', 'alternate-window', 'fifo-window')][string]$testCase = ''
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -101,27 +100,13 @@ function assertClientColor([IntPtr]$windowHandle, [string]$stage, [int[]]$expect
         $clientBitmap.Save((Join-Path $resolvedLogDirectory ($stage + '.png')), [Drawing.Imaging.ImageFormat]::Png)
         foreach ($horizontalFraction in @(0.01,0.25,0.5,0.75,0.99)) {
             foreach ($verticalFraction in @(0.01,0.25,0.5,0.75,0.99)) {
-                $pixelX = [int]($clientWidth * $horizontalFraction)
-                $pixelY = [int]($clientHeight * $verticalFraction)
-                $sampleExpected = $expectedRgb
-                if ($content -eq 'triangle') {
-                    $ndcX = 2.0 * ($pixelX + 0.5) / $clientWidth - 1.0
-                    $ndcY = 2.0 * ($pixelY + 0.5) / $clientHeight - 1.0
-                    $redWeight = (0.65 - $ndcY) / 1.3
-                    $greenWeight = (1.0 - $redWeight + $ndcX / 0.65) / 2.0
-                    $blueWeight = 1.0 - $redWeight - $greenWeight
-                    if ($redWeight -gt 0 -and $greenWeight -gt 0 -and $blueWeight -gt 0) {
-                        $sampleExpected = @($redWeight,$greenWeight,$blueWeight | ForEach-Object { toDisplayByte $_ ($selectedFormat -in @(43,50)) })
-                    }
-                }
-                $pixelColor = $clientBitmap.GetPixel($pixelX, $pixelY)
+                $pixelColor = $clientBitmap.GetPixel([int]($clientWidth * $horizontalFraction), [int]($clientHeight * $verticalFraction))
                 $sampleRgb = @([int]$pixelColor.R, [int]$pixelColor.G, [int]$pixelColor.B)
                 for ($channelIndex = 0; $channelIndex -lt 3; $channelIndex++) {
-                    if ([Math]::Abs($sampleRgb[$channelIndex] - $sampleExpected[$channelIndex]) -gt 8) {
-                        throw "Clear color mismatch at ${stage}: actual=$sampleRgb expected=$sampleExpected; inspect saved PNG."
+                    if ([Math]::Abs($sampleRgb[$channelIndex] - $expectedRgb[$channelIndex]) -gt 8) {
+                        throw "Clear color mismatch at ${stage}: actual=$sampleRgb expected=$expectedRgb; inspect saved PNG."
                     }
                 }
-                $script:colorEvidence += "${stage}: pixel=$pixelX,$pixelY actual=$sampleRgb expected=$sampleExpected tolerance=8 encodingFormat=$selectedFormat"
             }
         }
         $script:colorEvidence += "${stage}: client=${clientWidth}x${clientHeight}; 25 interior/edge samples RGB=$($sampleRgb -join ','); expected=$($expectedRgb -join ',')"
@@ -176,11 +161,9 @@ try {
         toDisplayByte ([double]::Parse($colorMatch.Groups[$_].Value, [Globalization.CultureInfo]::InvariantCulture)) ($selectedFormat -in @(43,50))
     })
     assertClientColor $windowHandle 'initial' $expectedRgb
-    $stablePipelineCount = [regex]::Matches((Get-Content -LiteralPath $stdoutPath -Raw), 'Created graphics pipeline').Count
     $stableGeneration = (getLatestReady).Groups[1].Value
     Start-Sleep -Seconds $durationSeconds
     assertClientColor $windowHandle 'sustained' $expectedRgb
-    if ([regex]::Matches((Get-Content -LiteralPath $stdoutPath -Raw), 'Created graphics pipeline').Count -ne $stablePipelineCount) { throw 'Stable window recreated pipeline.' }
     if ((getLatestReady).Groups[1].Value -ne $stableGeneration) { throw 'Stable window repeatedly rebuilt.' }
     foreach ($windowSize in @(@(1100,700),@(720,480),@(900,600))) {
         if (-not [WindowVerification]::MoveWindow($windowHandle, 100, 100, $windowSize[0], $windowSize[1], $true)) { throw 'Move/resize failed.' }
@@ -192,10 +175,8 @@ try {
         Start-Sleep -Milliseconds 30
     }
     assertClientColor $windowHandle 'resize-burst-final' $expectedRgb
-    $stablePipelineCount = [regex]::Matches((Get-Content -LiteralPath $stdoutPath -Raw), 'Created graphics pipeline').Count
     $stableGeneration = (getLatestReady).Groups[1].Value
     Start-Sleep -Milliseconds 600
-    if ([regex]::Matches((Get-Content -LiteralPath $stdoutPath -Raw), 'Created graphics pipeline').Count -ne $stablePipelineCount) { throw 'Stable window recreated pipeline.' }
     if ((getLatestReady).Groups[1].Value -ne $stableGeneration) { throw 'Resize burst did not converge.' }
     $messageResult = [IntPtr]::Zero
     if ([WindowVerification]::SendMessageTimeout($windowHandle, 0, [IntPtr]::Zero, [IntPtr]::Zero, 2, 2000, [ref]$messageResult) -eq [IntPtr]::Zero) { throw 'Window unresponsive.' }
@@ -235,7 +216,7 @@ try {
     }
     $actualCleanup = @([regex]::Matches($standardOutput, 'Destroyed [^\r\n]+|Terminated GLFW') | ForEach-Object { $_.Value }) -join ';'
     if ($actualCleanup -ne 'Destroyed device;Destroyed surface;Destroyed debug messenger;Destroyed instance;Destroyed window;Terminated GLFW') { throw "Cleanup order/count mismatch: $actualCleanup" }
-    foreach ($resourceName in @('command pool','acquire semaphore','submission fence','swapchain','render pass','image view','framebuffer','present semaphore','shader module','pipeline layout','graphics pipeline')) {
+    foreach ($resourceName in @('command pool','acquire semaphore','submission fence','swapchain','render pass','image view','framebuffer','present semaphore')) {
         $createCount = [regex]::Matches($standardOutput, "Created $resourceName[\r\n]").Count
         $releaseCount = [regex]::Matches($standardOutput, "Released $resourceName[\r\n]").Count
         if ($createCount -ne $releaseCount) { throw "Unbalanced ${resourceName}: $createCount vs $releaseCount" }
@@ -252,7 +233,7 @@ try {
     }
     $verificationEvidence = @("VK_LAYER_VALIDATE_SYNC=1 supplied to child process; test executable also uses explicit layer settings when available", $frameSummary.Value, "mode=$($formatMatch.Groups[1].Value); format=$selectedFormat; closeWhileMinimized=$closeWhileMinimized") + $script:colorEvidence
     $verificationEvidence | Set-Content -LiteralPath (Join-Path $resolvedLogDirectory 'verification.txt') -Encoding UTF8
-    "PASS: sustained $content output; repeated resize; 3 minimized/restore cycles or final minimized close; exit=0; balanced resources; no application validation WARNING/ERROR. $($frameSummary.Value). Logs: $resolvedLogDirectory"
+    "PASS: sustained clear color; repeated resize; 3 minimized/restore cycles or final minimized close; exit=0; balanced resources; no application validation WARNING/ERROR. $($frameSummary.Value). Logs: $resolvedLogDirectory"
 } finally {
     if (-not $process.HasExited) { [void]$process.CloseMainWindow(); [void]$process.WaitForExit(5000) }
     $process.Dispose()

@@ -24,7 +24,7 @@ void Rhi::initialize(GLFWwindow* windowHandle, const RhiConfig& config) {
     }
     backend = std::make_unique<VulkanBackend>();
     backend->context.initialize(windowHandle);
-    backend->presenter.initialize(windowHandle, backend->context.getDeviceView(), config);
+    backend->presenter.initialize(windowHandle, backend->context.getDeviceView(), config.clearColor);
 }
 
 void Rhi::renderFrame() {

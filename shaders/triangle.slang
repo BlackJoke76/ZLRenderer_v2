@@ -15,4 +15,3 @@ VertexOutput vertexMain(uint vertexId : SV_VulkanVertexID) {
 float4 fragmentMain(VertexOutput input) : SV_Target0 {
     return float4(input.color, 1);
 }
-

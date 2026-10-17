@@ -21,7 +21,7 @@
 ## 4. 集成与交接
 
 - [x] 4.1 独立构建目录全新Debug/Release构建并运行全部CTest及clear-only窗口回归，确认MAILBOX优先/FIFO回退测试与实际模式记录；执行可用ASan/静态分析并如实记录UBSan等环境限制，不扩大已知环境诊断过滤。
-- [ ] 4.2 完成verification.md要求/场景到证据映射，运行OpenSpec严格校验与git diff --check，更新STATUS/ROADMAP实际结果；全部验收通过后按AGENTS核对目标、独立提交本change并推送，保存SHA和远程核对结果。
+- [x] 4.2 完成verification.md要求/场景到证据映射，运行OpenSpec严格校验与git diff --check，更新STATUS/ROADMAP实际结果；全部验收通过后按AGENTS核对目标、独立提交本change并推送，保存SHA和远程核对结果。
 
 ## Workflow follow-up
 

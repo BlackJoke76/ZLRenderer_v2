@@ -50,4 +50,4 @@ CMake独立目录 `build-triangle`，沿用已固定的 `build-present-clean/_de
 
 `build-triangle-analysis` 使用 `/EHsc /analyze`，全部C++目标构建无警告，原始汇总 `build-triangle/analysis-build.log`。未发现可用clang++/clang-cl，MSVC不提供UBSan；未运行或宣称UBSan通过。
 
-OpenSpec严格校验及git diff --check通过。当前10/11任务完成，仅Git交付回执待完成；不在此阶段同步或归档主规格。远程已核对为 `https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`，远程基线仍为d5adb950dee00495af40f3581d88733d6eb87b21。仅提交此change相关文件，保留既有未跟踪 `.agents/` 和两个 `.gitkeep`。最终提交及推送回执在后续记录及Git输出。
+OpenSpec严格校验及git diff --check通过。11/11任务完成，实施已提交并推送；不在此阶段同步或归档主规格。远程已核对为 `https://github.com/BlackJoke76/ZLRenderer_v2.git`、`main`、upstream `origin/main`，远程基线仍为d5adb950dee00495af40f3581d88733d6eb87b21。仅提交此change相关文件，保留既有未跟踪 `.agents/` 和两个 `.gitkeep`。实施提交 `f2ee745da61e64644333d658fc4225cdacdb6271` 已推送main，git ls-remote核对远程SHA一致。任务完成及交接回执在后续独立文档提交保存，最终回执SHA以Git历史和交付输出为准。首次暂存检查指出新增shader末尾多余空行，已在回执提交移除并重新核对diff检查；该修正只去除空白及UTF-8 BOM，不改变shader语义，未重复运行功能验收。

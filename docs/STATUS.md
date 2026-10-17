@@ -1,8 +1,10 @@
 # 实际进度
 
+2026-10-17，`handle-swapchain-resize` 已同步主规格并归档至 `openspec/changes/archive/2026-10-17-handle-swapchain-resize/`（spec-driven）。`frame-presentation` 修改3条、新增1条需求，25个delta场景逐项一致；保留标题、Purpose及其余5条需求。4份主规格与归档前change严格校验通过，6个归档文件（含 `.openspec.yaml`）移动前后SHA256一致，19/19任务完成。此次仅同步规格、归档和更新交接文档，未重跑产品构建或窗口测试；2026-10-15复核结果及基础WSI限制继续有效。提交推送目标为已核实的 origin、main / origin/main，最终SHA以Git历史及交付输出为准。下方实施/复核段落保留当时状态。
+
 2026-10-15 最新复核：`openspec-verify-change handle-swapchain-resize` 通过。完整性19/19任务、4/4 delta要求；正确性25/25场景已核查；一致性5/5设计决策及代码模式通过，0 critical / warning / suggestion，无跳过检查。新建 `build-resize-verify`，Debug/Release 构建无警告且各50/50 CTest；两配置可见关闭和最小化关闭四个窗口流程均通过（2382/2382、2389/2389、2397/2397、2381/2381帧，各9代）。25点客户区/边缘采样、三轮暂停冻结/恢复推进、5秒内退出0、资源平衡及应用validation/sync诊断均已核对。新原始证据在该目录 `test-logs`、`window-logs`、`minimized-close-logs`；详见 change 的 verification.md 新增复核章节。历史ASan/静态分析证据已核对，本轮未重跑。FIFO同族硬件、合成覆盖及基础WSI限制保持明示；未同步主规格或归档。此次仅提交本change的复核报告和交接记录，最终提交/推送SHA见Git交付输出。
 
-当前活动 change：`handle-swapchain-resize`。2026-10-14 实施、验收及 Git 交付通过，19/19 项完成；未同步主规格或归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
+最近完成 change：`handle-swapchain-resize`（已同步主规格并归档，当前无活动 change）。2026-10-14 实施、验收及 Git 交付通过，19/19 项完成；2026-10-17 已同步主规格并归档。已按用户要求通过 oldSwapchain 创建新链，完成新一代附件后切换并清理旧代，保留两个帧槽；等待后复查尺寸/关闭、零 extent 延迟和重复最小化恢复已验证。Debug/Release/ASan 各 50/50 CTest 通过，/analyze 无警告，五个实际窗口流程通过，详细报告见下方。
 
 本机 AMD Radeon RX 7900 XT，graphics/present 族均为 0；当前 surface 模式选择实际为 FIFO 回退，3 张图像，格式 B8G8R8A8_SRGB（50）。MAILBOX 优先由纯选择测试覆盖；分族 sharing 和配置变化是合成输入/代码检查，未宣称真实分族或 MAILBOX 硬件实测。
 
@@ -10,7 +12,7 @@
 
 ## handle-swapchain-resize 验收与交接
 
-报告：`openspec/changes/handle-swapchain-resize/verification.md`，4 条 delta 要求、25 个场景逐项关联实际/合成/控制及代码证据；严格校验与 git diff --check 通过。共享创建/释放用于初建与候选代，unique_ptr 保护候选异常清理；创建调用后的旧链已退役，失败停止正常循环并清理两代，不回滚 acquire 旧链。
+报告：`openspec/changes/archive/2026-10-17-handle-swapchain-resize/verification.md`，4 条 delta 要求、25 个场景逐项关联实际/合成/控制及代码证据；严格校验与 git diff --check 通过。共享创建/释放用于初建与候选代，unique_ptr 保护候选异常清理；创建调用后的旧链已退役，失败停止正常循环并清理两代，不回滚 acquire 旧链。
 
 独立 `build-resize` 的 Debug/Release 无警告构建与各 50/50 CTest 通过。使用现有固定 GLFW 3.4 源码目录配置独立产物，未重新下载；完整 build/ctest 汇总在该目录的 `build-<配置>.log` 与 `ctest-<配置>.log`，原始测试诊断在 `test-logs/<配置>/`。连续 1→2→3 真交换链参数链、附件存活与帧归属、两个帧槽身份、候选各阶段失败均核验；创建失败的调用前注入只验证 host 控制，不声称真实驱动失败/退役。
 

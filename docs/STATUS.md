@@ -1,10 +1,12 @@
 # 实际进度
 
+2026-10-17，`render-slang-triangle`（spec-driven）已归档至 `openspec/changes/archive/2026-10-17-render-slang-triangle/`，当前无活动change。归档前核对11/11任务、全部规划产物完成，主规格triangle-rendering的6条需求、13个场景及Purpose与delta逐字一致，无待同步内容；5份主规格和change严格校验通过。6个归档文件（含 `.openspec.yaml`、verification.md）移动前后SHA256完全一致，清单在忽略目录 `build-triangle-verify/archive-manifest.json`。本次仅移动归档及更新交接文档，未改产品或重跑运行验收；下方历史段落保留当时状态。目标为已核实origin、main / origin/main，最终提交及远程SHA见Git输出。
+
 2026-10-17，`render-slang-triangle` 已同步主规格：新增 `openspec/specs/triangle-rendering/spec.md`，6条要求、13个场景及Purpose与delta原文一致，其他4份主规格保持原样。change仍处于活动状态，11/11任务完成，未归档。此次仅同步规格和更新交接记录，沿用独立复核结论，不重复产品构建或窗口测试；下方实施/复核段落保留当时状态。提交推送目标仍为已核实的origin、main / origin/main，最终SHA见Git历史及交付输出。
 
 2026-10-17，`openspec-verify-change render-slang-triangle` 独立复核通过：11/11任务、6/6要求、13/13场景、5/5设计决策和代码模式一致性通过；0 critical / warning / suggestion，无适用检查跳过。新目录 `build-triangle-verify` Debug/Release无警告构建、各61/61 CTest（46.08/42.55秒）；新三角形可见/最小化关闭四流程和Release替代背景均通过（2421、2347、2369、2372、2231帧，各9代且pipeline创建释放平衡），25点颜色、三轮暂停恢复、5秒内退出0及应用validation/sync均核对。历史ASan、/analyze和构建失败证据已核对，本轮未重跑；实际FIFO同族硬件、合成覆盖及基础WSI限制不变。详见change verification.md独立复核章节；未同步或归档，仅提交复核报告及交接记录，最终推送SHA见Git输出。
 
-2026-10-17，当前活动 change：`render-slang-triangle`。Slang离线编译及固定RGB三角形已实施，原RHI默认clearOnly及原清屏回归保留。Debug/Release各61/61 CTest通过，三角形两配置可见/最小化关闭、Release替代背景与两配置清屏窗口均通过；原始证据见 `build-triangle`，场景映射见 `openspec/changes/render-slang-triangle/verification.md`。11/11任务完成，实施提交 `f2ee745da61e64644333d658fc4225cdacdb6271` 已推送 `main`，远程SHA已核对；ASan Release的61/61测试和三角形窗口2352/2352帧、9代通过，/analyze全部目标无警告，未发现可用UBSan工具链；未同步主规格或归档。Slang使用SV_VulkanVertexID、SPIR-V1.0及GLSL中间后端，实际模块经vulkan1.0校验；工具版本2026.1-52-gc8ddf20bb。RX7900XT仍为FIFO同族0，MAILBOX/分族及跨代格式变化保留合成/代码核查性质，基础WSI限制未改变。
+2026-10-17，实施时的活动 change：`render-slang-triangle`（现已归档）。Slang离线编译及固定RGB三角形已实施，原RHI默认clearOnly及原清屏回归保留。Debug/Release各61/61 CTest通过，三角形两配置可见/最小化关闭、Release替代背景与两配置清屏窗口均通过；原始证据见 `build-triangle`，场景映射见 `openspec/changes/archive/2026-10-17-render-slang-triangle/verification.md`。11/11任务完成，实施提交 `f2ee745da61e64644333d658fc4225cdacdb6271` 已推送 `main`，远程SHA已核对；ASan Release的61/61测试和三角形窗口2352/2352帧、9代通过，/analyze全部目标无警告，未发现可用UBSan工具链；未同步主规格或归档。Slang使用SV_VulkanVertexID、SPIR-V1.0及GLSL中间后端，实际模块经vulkan1.0校验；工具版本2026.1-52-gc8ddf20bb。RX7900XT仍为FIFO同族0，MAILBOX/分族及跨代格式变化保留合成/代码核查性质，基础WSI限制未改变。
 
 2026-10-17，`handle-swapchain-resize` 已同步主规格并归档至 `openspec/changes/archive/2026-10-17-handle-swapchain-resize/`（spec-driven）。`frame-presentation` 修改3条、新增1条需求，25个delta场景逐项一致；保留标题、Purpose及其余5条需求。4份主规格与归档前change严格校验通过，6个归档文件（含 `.openspec.yaml`）移动前后SHA256一致，19/19任务完成。此次仅同步规格、归档和更新交接文档，未重跑产品构建或窗口测试；2026-10-15复核结果及基础WSI限制继续有效。提交推送目标为已核实的 origin、main / origin/main，最终SHA以Git历史及交付输出为准。下方实施/复核段落保留当时状态。
 

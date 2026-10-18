@@ -111,3 +111,47 @@ Release 产品二进制检查未包含 ZL_VULKAN_TEST_CASE、graph-double-window
 交付目标已核实为 origin = https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main。实施前本地 HEAD 与远端 main 均为 2590e4c58d7c055cd0b0b647ba9345387b9bd579；受限内网络线程失败后，获准的受限外只读核对成功。验收成果按 AGENTS 独立提交推送，最终 SHA 及推送回执见 Git 历史与交付输出。
 
 本 change 的 apply instructions 已核对为 20/20、state=all_done，9条要求/30场景均已关联，严格规格及新文件/差异空白检查通过。主规格未同步、未归档。既有 .agents/ 与两个 .gitkeep 不属于本变更，不暂存；本次仅交付本 change 的源码、测试、规格和交接文档。
+
+## 2026-10-18 独立 verify 复核
+
+本节是用户另行请求 `openspec-verify-change` 后的复核，以上 apply 自检保留为历史证据。复核对象为已推送实现提交 `893c1b207d3ff23cc305d48e4a0df4b232c2141e`；复核前工作区受跟踪文件无差异。读取全部 proposal/design/specs/tasks，逐项核对源码、测试和原始验收记录，不能将 apply 的 all_done 作为通过结论。本次没有修改产品代码、测试或规划契约，没有同步主规格或归档。
+
+### 评分与问题
+
+| 维度 | 复核结果 |
+|---|---|
+| 完整性 | 20/20 任务；9/9 ADDED 要求有实现，任务勾选与实际证据相符 |
+| 正确性 | 9/9 要求实现映射、30/30 场景覆盖核查通过；CPU/参数/真实 GPU/控制覆盖保持区分 |
+| 一致性 | 8/8 设计决策及代码模式核查通过；命名、所有权和共用函数符合项目规则 |
+
+CRITICAL：0；WARNING：0；SUGGESTION：0。适用检查未验证项：0。REMOVED/RENAMED 要求不存在，不适用。结论：All checks passed. Ready for archive；是否归档仍等待用户单独请求。
+
+### 源码与证据复核定位
+
+前述 9 条要求 / 30 场景表已重新逐项核对，不仅检查场景名称存在，也检查其实现分支和测试断言。重点路径：
+
+- `src/renderGraph.h:17` 的图内 handle 与 `src/renderGraph.cpp:60` 的引用校验避免跨图混用；编译计划没有 Vk/GLFW 类型或实际附件所有权。`src/rhi.cpp:9` 的成员顺序确保 Presenter 先于其借用的计划和 context 析构。
+- `src/renderGraph.cpp:114` 按声明顺序编译；`:145` 的 analyzeUse 验证内容，`:174` 遍历全部读取者，`:181` 生成边界转换，`:185` 仅在写入后清空读者。RAW/WAR/WAW 逻辑边与可复用的兼容读取可见性分开；Load/Discard 的内容负例含有效输出，不能由无效呈现出口掩盖。
+- `src/renderGraph.cpp:193` 建立一对一物理组，`:207` 仅在终端追加呈现转换；`src/vulkanRenderGraph.cpp:21` 统一映射 stage/access/layout，`:85` 明确拒绝未实现的采样绘制，`:94` 检查绑定、代/索引/描述及隐藏别名。
+- `src/vulkanPresenter.cpp:122` 从计划创建实际 load/store render pass 变体，initial/subpass/final 布局一致；`:255` 遍历实际组边界，全部组使用同一帧槽 command buffer。`:383` acquire 后验证局部绑定，`:401` 录制完成后才 reset fence，`:407` 一次提交，成功后才推进计数并发布采集记录。
+- `tests/renderGraphTests.cpp` 的 writer/readers、同布局 WAW、内容有效性与确定顺序断言，`tests/vulkanRenderGraphTests.cpp` 的原生参数/绑定/能力断言，以及共享 `tests/checkRenderGraph.cmake` 的真实输入核查均已阅读并复跑。纯 WAR execution-only fixture 是参数测试，未误写为当前编译器或 GPU 实际采样路径。
+- 原有 WSI 跳帧、SUBOPTIMAL 消费、旧链退役和候选失败规则仍由生产路径及回归覆盖。没有新增稳定帧 WaitIdle、命令/同步对象分配或每 pass 单独 submit；不以通过 validation 补足既有呈现引擎完成限制。
+
+### 本次新运行与保留证据
+
+新建 `build-render-graph-verify`，使用固定 GLFW 源码重新配置，从头编译 Debug/Release；两配置无警告，分别 68/68 CTest 通过（45.52 / 39.03 秒）。原始日志为 `configure.log`、`build-Debug.log`、`build-Release.log`、`ctest-Debug.log`、`ctest-Release.log` 和 `test-logs/<配置>/`。Release 产品二进制无测试环境开关、双清屏测试选择或注入失败标记。
+
+本次另顺序运行四个新窗口流程，证据在该目录 `window-logs/`：
+
+| 流程 | submitted / presented | 代数 | 目录 |
+|---|---|---|---|
+| Debug 生产默认色，可见关闭 | 2288 / 2288 | 9 | Debug/default-visible |
+| Debug 测试双清屏 | 1926 / 1926 | 9 | Debug/double |
+| Release 生产默认色，最小化关闭 | 2258 / 2258 | 9 | Release/default-minimized |
+| Release 测试双清屏 | 1938 / 1938 | 9 | Release/double |
+
+每个流程持续至少 10 秒、25 点内部/边缘颜色检查、多次缩放及三轮最小化恢复、暂停计数冻结/恢复推进、5 秒内退出 0、资源平衡与应用 validation/sync 无 WARNING/ERROR 均通过。默认和双清屏最终 RGB=63,89,124；截图与 verification.txt 已保留，生产 sustained 截图亦人工查看。图记录分别为 9/19/9/19 个有界帧；双清屏实际日志同时证明同图像/附件、两个组、同布局 WAW、唯一最终转换和一次 submit。
+
+两配置原默认可见/最小化关闭、替代色与双清屏的八个窗口流程，以及 ASan 默认/双清屏两个窗口流程的原始 verification.txt 已逐份核对，均与本报告历史表计数相符。本次没有重跑替代色、ASan 或静态分析；核对了保留的 ASan 68/68 日志、插桩与链接参数、两份窗口证据，以及 /analyze 全目标及内容测试补强后的无警告构建日志。实现源码与被复核提交一致，保留证据可用于这些检查；这不记作本次新运行。MSVC UBSan 不可用，不宣称通过。
+
+本次实际硬件仍为 RX 7900 XT、graphics/present family=0、FIFO、format=50、3 图像/2 帧槽。MAILBOX 优先与分族是合成策略/参数覆盖；采样绘制、自动合并及基础 WSI 呈现完成保证仍按既定范围说明，不是缺失的本次交付。严格 OpenSpec 校验及差异空白检查通过。Git 交付仅包含本节复核报告和 STATUS 交接，远端 origin/main 在复核前与实现 SHA 一致；复核提交及推送回执见 Git 历史和本轮输出。

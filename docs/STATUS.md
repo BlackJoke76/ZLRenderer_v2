@@ -1,5 +1,9 @@
 # 实际进度
 
+2026-10-18，`openspec-verify-change add-minimal-render-graph` 独立复核通过：20/20任务、9/9要求、30/30场景、8/8设计决策及代码模式核查通过，0 critical / warning / suggestion，无适用检查未验证项。复核对象为已推送实现提交 `893c1b207d3ff23cc305d48e4a0df4b232c2141e`，未修改产品代码。新目录 `build-render-graph-verify` Debug/Release 无警告构建，各68/68 CTest（45.52/39.03秒）；四个新窗口流程分别2288/2288、1926/1926、2258/2258、1938/1938帧，均9代，覆盖生产可见/最小化关闭和两配置双清屏。25点颜色、持续呈现、缩放、三轮暂停冻结/恢复推进、5秒内退出0、资源平衡、实际图参数及应用validation/sync检查通过。新日志/截图在该目录 test-logs、window-logs。
+
+已核对原八个普通窗口流程、ASan 68/68及两窗口、/analyze构建证据，本轮未重新运行替代色、ASan或静态分析。硬件仍为RX 7900 XT、同族0、FIFO、format50、3图像/2帧槽；CPU/参数覆盖及基础WSI限制保持明示。详细定位与结果见 change 的 verification.md 独立 verify 章节。本轮仅提交复核报告和交接记录，目标为已核实的origin、main / origin/main，最终提交与推送SHA见Git输出；主规格未同步、未归档。既有未跟踪 .agents/ 与两个 .gitkeep 保留。
+
 2026-10-18，`add-minimal-render-graph` 实施验收通过，20/20任务完成：有序资源使用声明、RAW/WAR/WAW 与内容有效性分析、一对一物理执行组、显式图像边界同步、当前代绑定与真实参数诊断已接入生产清屏。图/不可变计划由 VulkanBackend 持有；Presenter 保持原 WSI 所有权。自动 pass 合并、采样绘制等仍未实现，当前 change 未同步主规格、未归档。完整逐项报告见 `openspec/changes/add-minimal-render-graph/verification.md`。
 
 独立 `build-render-graph` Debug/Release 无警告构建，各 68/68 CTest（39.97/41.70秒）；内容负例补强后目标复测通过。`build-render-graph-asan` Release 68/68（87.37秒）与默认/双清屏窗口通过，无 ASan 报告；`build-render-graph-analysis` 六个 C++ 目标静态分析无警告。MSVC 未运行 UBSan。两普通配置各默认可见/最小化关闭、替代色、双清屏，共8个窗口流程，加ASan两个，共10个流程均9代，25点完整颜色、至少10秒连续呈现、三轮最小化恢复、暂停冻结/恢复推进、5秒内退出0、资源平衡与应用validation/sync诊断通过。原始日志/截图在上述目录的 test-logs、window-logs，具体计数见报告。

@@ -1,6 +1,7 @@
 #pragma once
 #include "rhi.h"
 #include "vulkanContext.h"
+#include "vulkanRenderGraph.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -14,7 +15,7 @@ public:
     ~VulkanPresenter() noexcept;
     VulkanPresenter(const VulkanPresenter&) = delete;
     VulkanPresenter& operator=(const VulkanPresenter&) = delete;
-    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, ClearColor clearColor);
+    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, const CompiledRenderGraph& plan);
     void renderFrame();
     void shutdown();
 private:
@@ -38,7 +39,8 @@ private:
         VkDevice deviceHandle;
         std::uint32_t generation;
         VkSwapchainKHR swapchainHandle = VK_NULL_HANDLE;
-        VkRenderPass renderPassHandle = VK_NULL_HANDLE;
+        std::array<VkRenderPass, 4> renderPassHandles{}; // Only load/store variants used by the plan are created.
+        VkFormat colorFormat = VK_FORMAT_UNDEFINED;
         VkExtent2D renderExtent{};
         VkExtent2D framebufferExtent{};
         std::vector<ImageResources> images;
@@ -55,14 +57,14 @@ private:
     std::unique_ptr<SwapchainResources> createSwapchain(const SwapchainConfiguration& configuration,
         VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle);
     void createRenderPass(SwapchainResources& resources, VkFormat colorFormat);
-    void recordClearFrame(const FrameResources& frame, const ImageResources& image);
+    std::string recordGraphFrame(const FrameResources& frame, std::span<const GraphImageBinding> bindings, bool captureTrace);
     bool rebuildSwapchain();
     VkResult waitForSubmissions() noexcept;
     static void releaseSwapchain(SwapchainResources& resources) noexcept;
     void releaseResources() noexcept;
     GLFWwindow* windowHandle = nullptr; // Borrowed; outlives this presenter.
     VulkanDeviceView deviceView{};
-    ClearColor clearColor{};
+    const CompiledRenderGraph* graphPlan = nullptr; // Backend-owned; outlives this presenter.
     std::array<FrameResources, 2> frames{};
     std::unique_ptr<SwapchainResources> swapchainResources;
     std::uint32_t frameIndex = 0;
@@ -72,6 +74,8 @@ private:
     bool rebuildRequested = false;
     bool hasSubmittedWork = false;
     bool presentationPaused = false;
+    std::uint32_t reportedGeneration = 0;
+    std::uint64_t reportedPlanVersion = 0;
 #ifdef ZL_RENDERER_TESTING
     bool testInjectionUsed = false;
 #endif

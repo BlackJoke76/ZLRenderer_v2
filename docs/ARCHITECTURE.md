@@ -1,8 +1,22 @@
 # 当前架构
 
-`main.cpp` 在主线程拥有 GLFW/window，使用 `Rhi` 的初始化、清屏帧和显式关闭接口。`rhi.h` 仅暴露颜色配置和生命周期，不暴露 Vulkan 句柄。具体 VulkanBackend 依次拥有 VulkanContext 与 VulkanPresenter，presenter 先析构，窗口晚于两者释放。Presenter 用不可复制的私有 SwapchainResources 集合拥有一代交换链、render pass、extent 和实际图像附件；unique_ptr 管理当前代及局部候选代，候选异常由同一释放函数清理。固定两个帧槽独立于代际资源。没有通用资源 ID、虚拟多后端接口或渲染线程。
+## RenderGraph 核心
 
-初始化：GLFW → NO_API window → Rhi 配置检查 → context（instance、messenger、surface、physical/logical device、queues）→ 两个帧槽 → swapchain/render pass/图像资源 → 主循环。零尺寸或最小化时延迟创建交换链；Debug/Release 均要求 validation。
+`renderGraph.h/.cpp` 提供不依赖 Vulkan/GLFW 的外部颜色图像声明、有序 raster pass、呈现出口和不可变编译计划。清屏是附件的 Clear load 行为，Load 表达保留内容的颜色附件读写，Store/Discard 决定结果是否可继续读取。图内 typed handle 不能跨图混用，不保存实际图像或 framebuffer；当前整图范围为单 mip/layer/sample，每个 pass 一个颜色附件，可声明 fragment 采样输入，反馈采样明确拒绝。
+
+编译按声明顺序分析资源的最近写入者和其后的全部读取者，保留带生产者/消费者的 RAW/WAR/WAW 与布局变化关系，验证内容有效性。Clear+Store 建立内容，Discard 后不能 Load/采样/呈现；没有自动重排、裁剪或临时 GPU 图像分配。物理执行组当前一对一对应 raster pass，出口不额外成组，组前后转换引用逻辑图像；兼容读读不新增 barrier，后续覆盖仍等待所有读取者。单纯 WAR 表达执行依赖，布局变化另包含转换要求；逻辑依赖不是自动重排指令。CPU CTest 核对声明、错误拒绝、依赖和确定分组。
+
+`vulkanRenderGraph.h/.cpp` 统一映射用途和验证局部绑定。颜色附件写/读写对应 COLOR_ATTACHMENT_OUTPUT 与颜色 WRITE/READ，fragment 采样对应 FRAGMENT_SHADER/SHADER_READ；采样只完成 CPU/参数验证，当前录制入口明确拒绝需要采样绘制的计划。组边界通过显式 image barrier 转换，render pass 的 initial/subpass/finalLayout 都保持 COLOR_ATTACHMENT_OPTIMAL；同一转换只有一处执行。Render pass 按实际使用的 Clear/Load 与 Store/Discard 组合缓存（最多四种），同格式 framebuffer 复用兼容 render pass，不逐帧创建。当前没有自动合并算法，未来合并必须保留组内内容语义并重新降低同步。
+
+VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开；计划只有逻辑引用。Presenter acquire 后构造当前代局部图像绑定，检查缺失、过期、格式/extent 不符及多个逻辑图像绑定同一实际图像；不支持别名。全部执行组录制进同一帧槽 primary buffer，一次 submit。测试目标的双清屏仅增加一条附件声明，与生产共用编译、映射和录制。
+
+正常日志每个已执行代/计划版本首次提交输出 Graph plan/resource/dependency，以及从实际 barrier/begin/submit 输入采集的有界 Graph submitted/group/barrier 记录，present 返回后单独输出 request result。记录在提交成功后才发布；稳定帧不重复完整输出。测试目标额外采集前 12 帧。共享 checkRenderGraph.cmake 从实际参数核对顺序、绑定、WAW 和唯一呈现转换，颜色与同步 validation 作为另外两份证据，不能互相替代。
+
+## 窗口与 Vulkan 生命周期
+
+`main.cpp` 在主线程拥有 GLFW/window，使用 `Rhi` 的初始化、清屏帧和显式关闭接口。`rhi.h` 仅暴露颜色配置和生命周期，不暴露 Vulkan 句柄。具体 VulkanBackend 依次拥有逻辑图/计划、VulkanContext 与 VulkanPresenter，presenter 在其借用的计划和 context 之前析构，窗口晚于两者释放。Presenter 用不可复制的私有 SwapchainResources 集合拥有一代交换链、render pass 变体、extent 和实际图像附件；unique_ptr 管理当前代及局部候选代，候选异常由同一释放函数清理。固定两个帧槽独立于代际资源。图内 handle 不成为全局资源注册表，没有虚拟多后端接口或渲染线程。
+
+初始化：GLFW → NO_API window → Rhi 配置检查与图编译 → context（instance、messenger、surface、physical/logical device、queues）→ 后端执行能力检查 → 两个帧槽 → swapchain/render pass/图像资源 → 主循环。零尺寸或最小化时延迟创建交换链；Debug/Release 均要求 validation。
 
 设备选择复用 `queueSelection.cpp` 的同族优先、分族可用与去重。候选必须具有 `VK_KHR_swapchain`、当前 surface 的颜色附件 usage、兼容格式及 MAILBOX/FIFO。device 为每个族请求一个 index 0 队列，优先级 1；明确启用交换链扩展。`vulkanUtilities.h` 共用结果检查与 `VK_INCOMPLETE` 枚举重试，`swapchainSelection.cpp` 共用真实查询和纯配置选择。
 
@@ -18,9 +32,9 @@
 | physical device / queues | instance/device 所有，内部借用 | 不独立 destroy |
 | window / GLFW | main | Rhi 后依次释放 |
 
-默认线性清屏色为 `(0.05,0.10,0.20,1)`，通过 main 中 RhiConfig 改动；初始化拒绝非有限或 [0,1] 外分量。render pass 的单个颜色附件 CLEAR/STORE，initialLayout=UNDEFINED（丢弃旧内容），subpass=COLOR_ATTACHMENT_OPTIMAL，finalLayout=PRESENT_SRC_KHR。begin/end render pass 覆盖整个 extent；没有 shader、pipeline 或 draw。
+默认线性清屏色为 `(0.05,0.10,0.20,1)`，通过 main 中 RhiConfig 改动；共用 clearColor.h 的检查拒绝非有限或 [0,1] 外分量。生产图声明单个颜色附件 CLEAR/STORE；显式获取边界 UNDEFINED→COLOR_ATTACHMENT_OPTIMAL，render pass 内保持该布局，最后显式转为 PRESENT_SRC_KHR。两次清屏之间的 WAW barrier 保持颜色附件布局，不重新退回 UNDEFINED。begin/end 覆盖整个 extent；没有 shader、pipeline 或 draw。
 
-正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → reset该槽pool并录制对应framebuffer → 提交前reset fence → submit等待该槽acquire信号（COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。render pass外部依赖覆盖颜色输出和写入。只在submit成功后推进frameIndex/提交计数。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
+正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → 验证图绑定 → reset该槽pool，按计划发出组前 barrier、录制对应 framebuffer 并发出组后 barrier → 提交前reset fence → 单次 submit 等待该槽acquire信号（阶段来自图的首次实际使用，当前为 COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。显式边界同步覆盖颜色写入和布局转换。只在submit成功后推进frameIndex/提交计数并发布图执行记录。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
 
 TIMEOUT/NOT_READY 跳帧；acquire OUT_OF_DATE 不reset fence，下次重建。成功获取的 SUBOPTIMAL 正常消费 acquire 信号、提交/呈现后再重建。present OUT_OF_DATE/SUBOPTIMAL 触发重建。录制/submit 失败终止正常循环；不会等待未提交的 fence。surface/device 丢失及其他不可恢复错误明确非零退出，不无限重试。
 

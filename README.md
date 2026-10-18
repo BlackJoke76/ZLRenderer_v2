@@ -1,6 +1,6 @@
 # ZLRenderer
 
-Windows 上的 C++20 / GLFW / Vulkan 开发工程。通过最小 RHI 在可调整大小的窗口持续显示清屏颜色，使用两个帧槽及交换链，同步获取、录制、提交与呈现，启用 validation 并正常关闭。
+Windows 上的 C++20 / GLFW / Vulkan 开发工程。通过最小 RHI 和单队列 RenderGraph 在可调整大小的窗口持续清屏，从资源用途自动规划同步；使用两个帧槽及交换链，同步获取、录制、提交与呈现，启用 validation 并正常关闭。
 
 ## 前置条件
 
@@ -44,7 +44,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 要验证从头构建，使用新的目录（例如将以上 `build` 替换为 `build-clean`），避免依赖已有构建缓存。初始化、窗口创建或运行失败会向标准错误输出阶段和原因，并返回非零退出码。
 
-CTest 默认开启，目前共 50 项：队列/交换链选择策略，以及实际 Vulkan 上的初始化回滚、诊断、帧槽复用、FIFO、替代颜色、资源回滚、超时、重建与错误控制子进程测试；新增连续 oldSwapchain 参数链、候选各阶段失败、等待后尺寸变化/关闭和受控零 framebuffer/iconified/surface extent。需满足上述 SDK、驱动及桌面条件。故障注入只在 `vulkanLifecycleTests` 目标编译，正常应用没有注入开关。只构建应用可在配置时指定 `-DBUILD_TESTING=OFF`。
+CTest 默认开启，目前共 68 项：保留队列/交换链选择、实际 Vulkan 初始化回滚、帧复用、FIFO、替代色、超时、oldSwapchain 整代替换、候选失败及暂停恢复等 50 项回归；新增 9 项无 GPU 的图编译测试、3 项后端参数/绑定/执行能力检查和 6 项真实后端图执行/错误控制。图编译测试不链接 Vulkan/GLFW；实际呈现测试仍需上述 SDK、驱动与桌面。参数绑定测试使用 host-only 句柄，不提交伪造对象。故障注入只在 `vulkanLifecycleTests` 目标编译，正常应用没有注入开关。只构建应用可在配置时指定 `-DBUILD_TESTING=OFF`。
 
 清屏颜色在 `src/main.cpp` 中初始化 `RhiConfig rendererConfig` 时指定，例如 `rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};`，重新编译后生效；分量必须有限且位于 [0,1]。颜色编码依据实际所选格式，配置无需修改帧同步代码。
 
@@ -59,6 +59,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -
 脚本保存完整 stdout/stderr、客户区 PNG 和 verification.txt 到对应配置目录的 `window-logs`；CTest 日志在 `build/test-logs/<配置>/`。暂停/恢复快照要求 submitted/presented 计数不变，恢复后的下一阶段必须有帧推进；稳定尺寸期间不重复重建。`-closeWhileMinimized` 在三次恢复后再次最小化并关闭，最终帧摘要必须等于最后暂停快照。脚本只将自己启动的验收窗口置顶以减少截图遮挡，并向该窗口发送标题栏对应的 SC_CLOSE，未模拟鼠标点击。需要可交互桌面，多个窗口验收顺序运行；像素自动检查支持 B8/R8 的 UNORM/SRGB 四种格式，其他格式需人工核验截图。客户区几何和 GDI 截图在同一 per-monitor v2 线程 DPI 上下文执行，恢复/缩放日志匹配后等待桌面动画稳定再采样。
 
 ## 诊断与退出
+
+图按声明顺序执行，当前每个逻辑 raster pass 对应一个物理执行组；没有自动合并、重排、临时 GPU 图像或 shader 绘制。Clear 是附件 load 行为，图编译器分析 RAW/WAR/WAW、多个读取者和内容有效性；后端统一在组边界发出显式 barrier，render pass 内保持颜色附件布局。图中的 fragment 采样用途只完成 CPU/参数映射验证，实际录制明确拒绝尚未实现的采样绘制。
+
+每个实际执行的交换链代/计划版本首次提交后，stdout 输出 `Graph plan`、`Graph resource`、`Graph dependency`，以及包含实际 API 参数的 `Graph submitted`、`Graph barrier`、`Graph group`；呈现返回后另记 `Graph present request ... result=...`。可从中查看 pass/组顺序、资源用途、依赖原因、布局及 stage/access、图像/帧槽归属。计划与录制不代表 GPU 成功提交，提交也不代表呈现引擎已完成。稳定帧不重复完整 dump；测试目标额外保留前 12 帧。
+
+只运行图编译和后端参数测试：
+
+```powershell
+ctest --test-dir build -C Debug -R '^graph-' --output-on-failure
+```
+
+真实双清屏验收使用测试目标的另一份图声明，依次把同一交换链图像清为 A、B，两个组共用同一 command buffer、framebuffer 和 render pass，图生成组间 WAW，最后只 submit 一次并呈现 B（默认深蓝色）：
+
+```powershell
+ctest --test-dir build -C Debug -R '^presentation-graph-' --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -executablePath .\build\Debug\vulkanLifecycleTests.exe -testCase graph-double-window -logDirectory .\build\Debug\graph-double-window-logs
+```
+
+Release 将配置名替换为 Release。窗口脚本复用颜色与窗口流程，并调用 `tests/checkRenderGraph.cmake` 核对实际 barrier/组/绑定顺序；需 CMake 在 PATH 或可用的默认 VS CMake 路径。验收要同时查看计划断言、实际参数、最终 25 点 B 色和 validation/sync 原始诊断；双清屏不证明采样绘制、自动 pass 合并或任意多 pass 已在 GPU 实测。
 
 成功日志示例（设备/族索引随机器不同）：
 

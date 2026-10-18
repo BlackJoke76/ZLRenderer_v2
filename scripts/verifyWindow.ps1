@@ -3,7 +3,7 @@ param(
     [string]$logDirectory,
     [switch]$closeWhileMinimized,
     [ValidateRange(10,60)][int]$durationSeconds = 10,
-    [ValidateSet('', 'alternate-window', 'fifo-window')][string]$testCase = ''
+    [ValidateSet('', 'alternate-window', 'fifo-window', 'graph-double-window')][string]$testCase = ''
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -231,7 +231,15 @@ try {
         }
         if (-not $knownEnvironmentMessage) { throw "Unexpected Vulkan diagnostic: $diagnosticLine" }
     }
-    $verificationEvidence = @("VK_LAYER_VALIDATE_SYNC=1 supplied to child process; test executable also uses explicit layer settings when available", $frameSummary.Value, "mode=$($formatMatch.Groups[1].Value); format=$selectedFormat; closeWhileMinimized=$closeWhileMinimized") + $script:colorEvidence
+    $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
+    $cmakeExecutable = if ($cmakeCommand) { $cmakeCommand.Source } else {
+        'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+    }
+    if (-not (Test-Path -LiteralPath $cmakeExecutable)) { throw 'CMake is required for shared graph log verification.' }
+    $expectedGraphGroups = if ($testCase -eq 'graph-double-window') { 2 } else { 1 }
+    & $cmakeExecutable "-DgraphLogPath=$stdoutPath" "-DexpectedGraphGroups=$expectedGraphGroups" -P (Join-Path $PSScriptRoot '../tests/checkRenderGraph.cmake')
+    if ($LASTEXITCODE -ne 0) { throw 'Graph execution log verification failed.' }
+    $verificationEvidence = @("VK_LAYER_VALIDATE_SYNC=1 supplied to child process; test executable also uses explicit layer settings when available", $frameSummary.Value, "mode=$($formatMatch.Groups[1].Value); format=$selectedFormat; closeWhileMinimized=$closeWhileMinimized; graphGroups=$expectedGraphGroups; graph/API order and bindings checked") + $script:colorEvidence
     $verificationEvidence | Set-Content -LiteralPath (Join-Path $resolvedLogDirectory 'verification.txt') -Encoding UTF8
     "PASS: sustained clear color; repeated resize; 3 minimized/restore cycles or final minimized close; exit=0; balanced resources; no application validation WARNING/ERROR. $($frameSummary.Value). Logs: $resolvedLogDirectory"
 } finally {

@@ -24,13 +24,24 @@ function(configureCppTarget targetName)
     endif()
 endfunction()
 
-set(rendererSources src/main.cpp src/rhi.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
+set(rendererSources src/main.cpp src/rhi.cpp src/renderGraph.cpp src/vulkanRenderGraph.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
 add_executable(zlRenderer ${rendererSources})
 configureCppTarget(zlRenderer)
 target_link_libraries(zlRenderer PRIVATE glfw Vulkan::Vulkan)
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(renderGraphTests tests/renderGraphTests.cpp src/renderGraph.cpp)
+    configureCppTarget(renderGraphTests)
+    foreach(testCase declarations references shapes exits raw war waw readers contents)
+        add_test(NAME graph-${testCase} COMMAND renderGraphTests ${testCase})
+    endforeach()
+    add_executable(vulkanRenderGraphTests tests/vulkanRenderGraphTests.cpp src/renderGraph.cpp src/vulkanRenderGraph.cpp)
+    configureCppTarget(vulkanRenderGraphTests)
+    target_link_libraries(vulkanRenderGraphTests PRIVATE Vulkan::Vulkan)
+    foreach(testCase mapping bindings recording)
+        add_test(NAME graph-${testCase} COMMAND vulkanRenderGraphTests ${testCase})
+    endforeach()
     add_executable(queueSelectionTests tests/queueSelectionTests.cpp src/queueSelection.cpp)
     configureCppTarget(queueSelectionTests)
     add_test(NAME queue-selection COMMAND queueSelectionTests)
@@ -59,7 +70,8 @@ if(BUILD_TESTING)
             record submit rebuild-failure surface-lost present-failure wait-failure
             old-chain rebuild-create rebuild-render-pass rebuild-image-view rebuild-framebuffer rebuild-present-semaphore
             prepare-resize prepare-close prepare-zero prepare-iconified initial-zero initial-iconified initial-zero-close
-            surface-zero surface-variable-zero surface-width-zero)
+            surface-zero surface-variable-zero surface-width-zero
+            graph-double graph-binding graph-stale graph-missing graph-group graph-unsupported)
         add_test(NAME presentation-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
             "-DtestCase=${testCase}"

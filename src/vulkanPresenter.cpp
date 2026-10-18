@@ -5,6 +5,8 @@
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <exception>
+#include <optional>
+#include <sstream>
 #ifdef ZL_RENDERER_TESTING
 #include "vulkanTestHooks.h"
 #endif
@@ -42,10 +44,11 @@ VulkanPresenter::~VulkanPresenter() noexcept {
 }
 
 void VulkanPresenter::initialize(GLFWwindow* requestedWindowHandle, const VulkanDeviceView& requestedDeviceView,
-                                 ClearColor requestedClearColor) {
+                                 const CompiledRenderGraph& requestedPlan) {
     windowHandle = requestedWindowHandle;
     deviceView = requestedDeviceView;
-    clearColor = requestedClearColor;
+    graphPlan = &requestedPlan;
+    validateGraphRecordingSupport(*graphPlan);
     createFrameResources();
     const auto state = readWindowState("initialize");
     if (!state.closing && !state.iconified && state.framebufferExtent.width > 0 && state.framebufferExtent.height > 0) {
@@ -53,6 +56,7 @@ void VulkanPresenter::initialize(GLFWwindow* requestedWindowHandle, const Vulkan
     } else if (!state.closing) {
         setPresentationPaused(true, "minimized/zero framebuffer");
     }
+    const auto clearColor = graphPlan->getPasses().back().colorAttachment.clearColor;
     std::printf("RHI initialization succeeded; clearColor=(%.3f,%.3f,%.3f,%.3f); frameSlots=%zu\n",
                 clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha, frames.size());
 }
@@ -116,41 +120,34 @@ void VulkanPresenter::createFrameResources() {
 }
 
 void VulkanPresenter::createRenderPass(SwapchainResources& resources, VkFormat colorFormat) {
-    VkAttachmentDescription attachment{};
-    attachment.format = colorFormat;
-    attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    const VkAttachmentReference colorReference{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorReference;
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    VkRenderPassCreateInfo passInfo{};
-    passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    passInfo.attachmentCount = 1;
-    passInfo.pAttachments = &attachment;
-    passInfo.subpassCount = 1;
-    passInfo.pSubpasses = &subpass;
-    passInfo.dependencyCount = 1;
-    passInfo.pDependencies = &dependency;
-    VkRenderPass createdPassHandle = VK_NULL_HANDLE;
-    checkResult(vkCreateRenderPass(deviceView.deviceHandle, &passInfo, nullptr, &createdPassHandle), "swapchain: vkCreateRenderPass");
-    resources.renderPassHandle = createdPassHandle;
-    reportSwapchainResource("Created", "render pass", resources.generation, reinterpret_cast<void*>(resources.renderPassHandle));
+    resources.colorFormat = colorFormat;
+    for (const auto& group : graphPlan->getGroups()) {
+        const auto& declaration = graphPlan->getPasses().at(group.logicalPassIndices.front()).colorAttachment;
+        const auto variant = getAttachmentVariant(declaration);
+        if (resources.renderPassHandles[variant]) { continue; }
+        const auto attachment = makeGraphAttachment(declaration, colorFormat);
+        const VkAttachmentReference colorReference{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorReference;
+        VkRenderPassCreateInfo passInfo{};
+        passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        passInfo.attachmentCount = 1;
+        passInfo.pAttachments = &attachment;
+        passInfo.subpassCount = 1;
+        passInfo.pSubpasses = &subpass;
+        VkRenderPass createdPassHandle = VK_NULL_HANDLE;
+        checkResult(vkCreateRenderPass(deviceView.deviceHandle, &passInfo, nullptr, &createdPassHandle), "swapchain: vkCreateRenderPass");
+        resources.renderPassHandles[variant] = createdPassHandle;
+        reportSwapchainResource("Created", "render pass", resources.generation, reinterpret_cast<void*>(createdPassHandle));
 #ifdef ZL_RENDERER_TESTING
-    runSwapchainTestCheckpoint("render-pass", resources.generation);
+        std::printf("Graph attachment generation=%u variant=%zu load=%d store=%d initialLayout=%d finalLayout=%d dependencies=%u\n",
+            resources.generation, variant, attachment.loadOp, attachment.storeOp, attachment.initialLayout,
+            attachment.finalLayout, passInfo.dependencyCount);
+        runSwapchainTestCheckpoint("render-pass", resources.generation);
 #endif
+    }
 }
 
 std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwapchain(
@@ -226,7 +223,7 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
 #endif
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = resources->renderPassHandle;
+        framebufferInfo.renderPass = resources->renderPassHandles[getAttachmentVariant(graphPlan->getPasses().front().colorAttachment)];
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = &image.imageViewHandle;
         framebufferInfo.width = resources->renderExtent.width;
@@ -255,7 +252,8 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
     return resources;
 }
 
-void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageResources& image) {
+std::string VulkanPresenter::recordGraphFrame(const FrameResources& frame, std::span<const GraphImageBinding> bindings,
+                                             bool captureTrace) {
     checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "record: vkResetCommandPool");
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("record", VK_NULL_HANDLE);
@@ -264,17 +262,65 @@ void VulkanPresenter::recordClearFrame(const FrameResources& frame, const ImageR
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     checkResult(vkBeginCommandBuffer(frame.commandBufferHandle, &beginInfo), "record: vkBeginCommandBuffer");
-    const VkClearValue clearValue{{{clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha}}};
-    VkRenderPassBeginInfo passInfo{};
-    passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    passInfo.renderPass = swapchainResources->renderPassHandle;
-    passInfo.framebuffer = image.framebufferHandle;
-    passInfo.renderArea.extent = swapchainResources->renderExtent;
-    passInfo.clearValueCount = 1;
-    passInfo.pClearValues = &clearValue;
-    vkCmdBeginRenderPass(frame.commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdEndRenderPass(frame.commandBufferHandle);
+    std::optional<std::ostringstream> trace;
+    if (captureTrace) { trace.emplace(); }
+    const auto emitTransitions = [&](std::size_t groupIndex, const char* boundary,
+                                     const std::vector<GraphImageTransition>& transitions) {
+        for (const auto& transition : transitions) {
+            const auto& binding = bindings[transition.imageIndex];
+            const auto mapped = mapGraphTransition(transition, binding.imageHandle);
+            vkCmdPipelineBarrier(frame.commandBufferHandle, mapped.sourceStages, mapped.destinationStages, 0,
+                                 0, nullptr, 0, nullptr, 1, &mapped.imageBarrier);
+            if (trace) {
+                const auto& barrier = mapped.imageBarrier;
+                *trace << "Graph barrier group=" << groupIndex << " boundary=" << boundary << " resource=" << transition.imageIndex
+                       << " imageHandle=" << reinterpret_cast<std::uintptr_t>(barrier.image)
+                       << " oldLayout=" << barrier.oldLayout << " newLayout=" << barrier.newLayout
+                       << " srcStage=" << mapped.sourceStages << " dstStage=" << mapped.destinationStages
+                       << " srcAccess=" << barrier.srcAccessMask << " dstAccess=" << barrier.dstAccessMask
+                       << " reasons=" << describeDependencyReasons(transition.reasons) << '\n';
+            }
+        }
+    };
+    for (std::size_t groupIndex = 0; groupIndex < graphPlan->getGroups().size(); ++groupIndex) {
+        const auto& group = graphPlan->getGroups()[groupIndex];
+        emitTransitions(groupIndex, "before", group.beforeTransitions);
+        const auto& attachment = graphPlan->getPasses()[group.logicalPassIndices.front()].colorAttachment;
+        const auto& binding = bindings[attachment.colorTargetHandle.getIndex()];
+        const auto& clearColor = attachment.clearColor;
+        const VkClearValue clearValue{{{clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha}}};
+        VkRenderPassBeginInfo passInfo{};
+        passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        passInfo.renderPass = swapchainResources->renderPassHandles[getAttachmentVariant(attachment)];
+        passInfo.framebuffer = binding.framebufferHandle;
+        passInfo.renderArea.extent = binding.extent;
+        passInfo.clearValueCount = 1;
+        passInfo.pClearValues = &clearValue;
+        vkCmdBeginRenderPass(frame.commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+        for (const auto passIndex : group.logicalPassIndices) {
+            if (trace) {
+                const auto actualAttachment = makeGraphAttachment(graphPlan->getPasses()[passIndex].colorAttachment, binding.format);
+                *trace << "Graph group group=" << groupIndex << " pass=" << graphPlan->getPasses()[passIndex].name
+                       << " resource=" << attachment.colorTargetHandle.getIndex()
+                       << " imageHandle=" << reinterpret_cast<std::uintptr_t>(binding.imageHandle)
+                       << " framebuffer=" << reinterpret_cast<std::uintptr_t>(passInfo.framebuffer)
+                       << " renderPass=" << reinterpret_cast<std::uintptr_t>(passInfo.renderPass)
+                       << " extent=" << passInfo.renderArea.extent.width << 'x' << passInfo.renderArea.extent.height
+                       << " load=" << actualAttachment.loadOp << " store=" << actualAttachment.storeOp
+                       << " initialLayout=" << actualAttachment.initialLayout << " finalLayout=" << actualAttachment.finalLayout
+                       << " clearColor=(" << clearValue.color.float32[0] << ',' << clearValue.color.float32[1] << ','
+                       << clearValue.color.float32[2] << ',' << clearValue.color.float32[3] << ")\n";
+            }
+            // This change's pass body is empty: attachment load/store performs the clear/preserve work.
+        }
+        vkCmdEndRenderPass(frame.commandBufferHandle);
+#ifdef ZL_RENDERER_TESTING
+        if (groupIndex == 0) { runVulkanTestCheckpoint("graph-group", VK_NULL_HANDLE); }
+#endif
+        emitTransitions(groupIndex, "after", group.afterTransitions);
+    }
     checkResult(vkEndCommandBuffer(frame.commandBufferHandle), "record: vkEndCommandBuffer");
+    return trace ? trace->str() : std::string{};
 }
 
 void VulkanPresenter::renderFrame() {
@@ -327,8 +373,22 @@ void VulkanPresenter::renderFrame() {
     }
     if (acquireResult == VK_SUBOPTIMAL_KHR) { rebuildRequested = true; std::puts("Rebuild requested: acquire SUBOPTIMAL"); }
     const auto& image = swapchainResources->images.at(imageIndex);
-    recordClearFrame(frame, image);
-    const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    std::array bindings{GraphImageBinding{graphPlan->getPresentTargetHandle(), image.imageHandle, image.imageViewHandle,
+        image.framebufferHandle, swapchainResources->colorFormat, swapchainResources->renderExtent, swapchainGeneration, imageIndex}};
+#ifdef ZL_RENDERER_TESTING
+    runVulkanTestCheckpoint("graph-binding", VK_NULL_HANDLE);
+    if (isVulkanTestCase("graph-stale")) { --bindings[0].generation; }
+    if (isVulkanTestCase("graph-missing")) { bindings[0].framebufferHandle = VK_NULL_HANDLE; }
+#endif
+    validateGraphBindings(*graphPlan, bindings, {swapchainGeneration, imageIndex, swapchainResources->colorFormat,
+                                               swapchainResources->renderExtent});
+    const auto reportPlan = reportedGeneration != swapchainGeneration || reportedPlanVersion != graphPlan->getVersion();
+    auto captureTrace = reportPlan;
+#ifdef ZL_RENDERER_TESTING
+    captureTrace = captureTrace || submittedFrames < 12;
+#endif
+    const auto graphTrace = recordGraphFrame(frame, bindings, captureTrace);
+    const auto waitStage = getGraphAcquireWaitStage(*graphPlan);
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
@@ -348,10 +408,35 @@ void VulkanPresenter::renderFrame() {
     checkResult(submitResult, "submit: vkQueueSubmit");
     hasSubmittedWork = true;
     ++submittedFrames;
+    if (reportPlan) {
+        std::printf("Graph plan generation=%u version=%llu slot=%u image=%u groups=%zu\n", swapchainGeneration,
+            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size());
+        for (std::size_t resourceIndex = 0; resourceIndex < graphPlan->getImages().size(); ++resourceIndex) {
+            const auto& declaration = graphPlan->getImages()[resourceIndex];
+            std::printf("Graph resource index=%zu name=%s ownership=external initialUse=%s contentsDefined=%d\n",
+                resourceIndex, declaration.name.c_str(), getImageUseName(declaration.initialUse), declaration.contentsDefined ? 1 : 0);
+        }
+        for (const auto& dependency : graphPlan->getDependencies()) {
+            const auto sourceName = dependency.sourcePassIndex == externalPassIndex ? "external" :
+                graphPlan->getPasses()[dependency.sourcePassIndex].name.c_str();
+            const auto destinationName = dependency.destinationPassIndex == graphPlan->getPasses().size() ? "present" :
+                graphPlan->getPasses()[dependency.destinationPassIndex].name.c_str();
+            std::printf("Graph dependency resource=%zu source=%s destination=%s reasons=%s\n", dependency.imageIndex,
+                sourceName, destinationName, describeDependencyReasons(dependency.reasons).c_str());
+        }
+        reportedGeneration = swapchainGeneration;
+        reportedPlanVersion = graphPlan->getVersion();
+    }
+    if (captureTrace) {
+        std::printf("Graph submitted frame=%llu generation=%u version=%llu slot=%u image=%u groups=%zu submits=1 waitStage=%u\n%sGraph record end\n",
+            static_cast<unsigned long long>(submittedFrames), swapchainGeneration,
+            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size(), waitStage, graphTrace.c_str());
+    }
 #ifdef ZL_RENDERER_TESTING
     if (submittedFrames <= 12) {
         std::printf("Frame attachments generation=%u framebuffer=%p renderPass=%p\n", swapchainGeneration,
-                    reinterpret_cast<void*>(image.framebufferHandle), reinterpret_cast<void*>(swapchainResources->renderPassHandle));
+                    reinterpret_cast<void*>(image.framebufferHandle), reinterpret_cast<void*>(swapchainResources->renderPassHandles[
+                        getAttachmentVariant(graphPlan->getPasses().front().colorAttachment)]));
         std::printf("Frame submitted slot=%u image=%u command=%p acquire=%p present=%p fence=%p generation=%u\n", frameIndex, imageIndex,
                     static_cast<void*>(frame.commandBufferHandle), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
                     reinterpret_cast<void*>(image.renderFinishedSemaphore), reinterpret_cast<void*>(frame.submissionFence), swapchainGeneration);
@@ -366,6 +451,10 @@ void VulkanPresenter::renderFrame() {
     presentInfo.pSwapchains = &swapchainResources->swapchainHandle;
     presentInfo.pImageIndices = &imageIndex;
     auto presentResult = vkQueuePresentKHR(deviceView.presentQueueHandle, &presentInfo);
+    if (captureTrace) {
+        std::printf("Graph present request frame=%llu generation=%u image=%u result=%d\n",
+            static_cast<unsigned long long>(submittedFrames), swapchainGeneration, imageIndex, presentResult);
+    }
 #ifdef ZL_RENDERER_TESTING
     if (presentResult == VK_SUCCESS && !testInjectionUsed &&
         (isVulkanTestCase("present-out-of-date") || isVulkanTestCase("present-suboptimal") || isVulkanTestCase("present-failure"))) {
@@ -382,7 +471,8 @@ void VulkanPresenter::renderFrame() {
         std::printf("Rebuild requested: present result=%d\n", presentResult);
     } else { checkResult(presentResult, "present: vkQueuePresentKHR"); }
 #ifdef ZL_RENDERER_TESTING
-    if (submittedFrames >= 12 && !isVulkanTestCase("alternate-window") && !isVulkanTestCase("fifo-window")) {
+    if (submittedFrames >= 12 && !isVulkanTestCase("alternate-window") && !isVulkanTestCase("fifo-window") &&
+        !isVulkanTestCase("graph-double-window")) {
         glfwSetWindowShouldClose(windowHandle, GLFW_TRUE);
     }
 #endif
@@ -462,10 +552,11 @@ void VulkanPresenter::releaseSwapchain(SwapchainResources& resources) noexcept {
             image.imageViewHandle = VK_NULL_HANDLE;
         }
     }
-    if (resources.renderPassHandle) {
-        vkDestroyRenderPass(resources.deviceHandle, resources.renderPassHandle, nullptr);
-        reportSwapchainResource("Released", "render pass", resources.generation, reinterpret_cast<void*>(resources.renderPassHandle));
-        resources.renderPassHandle = VK_NULL_HANDLE;
+    for (auto& renderPassHandle : resources.renderPassHandles) {
+        if (!renderPassHandle) { continue; }
+        vkDestroyRenderPass(resources.deviceHandle, renderPassHandle, nullptr);
+        reportSwapchainResource("Released", "render pass", resources.generation, reinterpret_cast<void*>(renderPassHandle));
+        renderPassHandle = VK_NULL_HANDLE;
     }
     for (auto& image : resources.images) {
         if (image.renderFinishedSemaphore) {

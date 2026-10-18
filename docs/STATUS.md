@@ -1,5 +1,13 @@
 # 实际进度
 
+2026-10-18，`add-minimal-render-graph` 实施验收通过，20/20任务完成：有序资源使用声明、RAW/WAR/WAW 与内容有效性分析、一对一物理执行组、显式图像边界同步、当前代绑定与真实参数诊断已接入生产清屏。图/不可变计划由 VulkanBackend 持有；Presenter 保持原 WSI 所有权。自动 pass 合并、采样绘制等仍未实现，当前 change 未同步主规格、未归档。完整逐项报告见 `openspec/changes/add-minimal-render-graph/verification.md`。
+
+独立 `build-render-graph` Debug/Release 无警告构建，各 68/68 CTest（39.97/41.70秒）；内容负例补强后目标复测通过。`build-render-graph-asan` Release 68/68（87.37秒）与默认/双清屏窗口通过，无 ASan 报告；`build-render-graph-analysis` 六个 C++ 目标静态分析无警告。MSVC 未运行 UBSan。两普通配置各默认可见/最小化关闭、替代色、双清屏，共8个窗口流程，加ASan两个，共10个流程均9代，25点完整颜色、至少10秒连续呈现、三轮最小化恢复、暂停冻结/恢复推进、5秒内退出0、资源平衡与应用validation/sync诊断通过。原始日志/截图在上述目录的 test-logs、window-logs，具体计数见报告。
+
+本轮实际仍为 RX 7900 XT、同族0、FIFO、format50、3图像/2帧槽；MAILBOX优先/分族为生产策略的合成覆盖。CPU/参数支持不代表采样绘制等已GPU实测，基础WSI的呈现引擎完成限制保持。Git目标已核实 origin、main / origin/main，实施前本地和远端同为 `2590e4c58d7c055cd0b0b647ba9345387b9bd579`；最终独立提交SHA及推送结果见Git历史和交付输出。既有未跟踪 .agents/ 与两个 .gitkeep 保留。
+
+## 历史交接记录（以下保留当时状态）
+
 2026-10-17，按用户要求回滚 `render-slang-triangle`。以新的逆向提交撤销该change的实现、交付、独立复核、规格同步和归档五个提交（f2ee745、11878bf、3ace840、c5f8abf、b213ab3），保留Git历史；除本回滚交接记录外，所有受跟踪文件恢复到 `d5adb950dee00495af40f3581d88733d6eb87b21`，此前 `handle-swapchain-resize` 的oldSwapchain整代重建保持。Slang构建依赖、三角形代码、triangle-rendering主规格和该change归档文件已撤回，当前无活动change。
 
 回滚验证：重新配置 `build-resize-verify`，Debug/Release无警告构建，各50/50 CTest通过（35.35/39.62秒）；4份保留主规格严格校验通过。Debug真实窗口正常关闭2361/2361帧、Release最小化关闭2386/2386帧，均9代，重复缩放/三轮最小化恢复、25点完整清屏、暂停计数冻结、5秒内退出0及资源平衡通过，无未知应用validation/sync WARNING/ERROR。新原始日志为该目录 `rollback-configure.log`、`rollback-build-<配置>.log`、`rollback-ctest-<配置>.log`、`rollback-window-logs/<配置>/`；未重跑ASan/静态分析。既有FIFO同族硬件、合成覆盖及基础WSI限制不变。提交推送目标为已核实的origin、main / origin/main，最终SHA见Git输出；原始三角形成果仍可通过历史提交恢复。既有未跟踪 `.agents/` 和两个 `.gitkeep` 保留。

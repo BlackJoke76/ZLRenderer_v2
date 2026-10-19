@@ -1,5 +1,7 @@
 # 实际进度
 
+2026-10-19，`openspec-sync-specs add-minimal-render-graph` 完成：新增主规格 `openspec/specs/render-graph/spec.md`，9条新增要求、30个场景及 Purpose 与已复核 delta 逐项一致，仅转换标题和 Requirements 章节格式，无 TBD 或 delta 操作标题；其余4份主规格保持不变。全部5份主规格及本change严格校验通过。本次仅同步规格和交接文档，未修改产品代码或重新运行构建/GPU测试，2026-10-18独立复核结果及覆盖限制保留。change仍在活动目录，20/20任务完成，未归档。提交推送目标为已核实的origin、main / origin/main，最终SHA见本轮Git交付输出；既有未跟踪 .agents/ 与两个 .gitkeep 保留。下方记录保留各阶段当时状态。
+
 2026-10-18，`openspec-verify-change add-minimal-render-graph` 独立复核通过：20/20任务、9/9要求、30/30场景、8/8设计决策及代码模式核查通过，0 critical / warning / suggestion，无适用检查未验证项。复核对象为已推送实现提交 `893c1b207d3ff23cc305d48e4a0df4b232c2141e`，未修改产品代码。新目录 `build-render-graph-verify` Debug/Release 无警告构建，各68/68 CTest（45.52/39.03秒）；四个新窗口流程分别2288/2288、1926/1926、2258/2258、1938/1938帧，均9代，覆盖生产可见/最小化关闭和两配置双清屏。25点颜色、持续呈现、缩放、三轮暂停冻结/恢复推进、5秒内退出0、资源平衡、实际图参数及应用validation/sync检查通过。新日志/截图在该目录 test-logs、window-logs。
 
 已核对原八个普通窗口流程、ASan 68/68及两窗口、/analyze构建证据，本轮未重新运行替代色、ASan或静态分析。硬件仍为RX 7900 XT、同族0、FIFO、format50、3图像/2帧槽；CPU/参数覆盖及基础WSI限制保持明示。详细定位与结果见 change 的 verification.md 独立 verify 章节。本轮仅提交复核报告和交接记录，目标为已核实的origin、main / origin/main，最终提交与推送SHA见Git输出；主规格未同步、未归档。既有未跟踪 .agents/ 与两个 .gitkeep 保留。

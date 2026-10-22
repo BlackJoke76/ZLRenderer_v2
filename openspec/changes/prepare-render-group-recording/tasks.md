@@ -30,7 +30,7 @@
 - [x] 5.1 Debug/Release 构建并运行全部 CTest（包含既有图依赖、队列选择、MAILBOX 优先/FIFO 回退、Vulkan 生命周期和本次故障覆盖），严格校验 change 并执行 git diff --check；保存命令、结果与测试总数，失败项不得标完成。
 - [x] 5.2 使用现有窗口脚本验收单清屏默认/替代色及双清屏 A/B，启用可用 validation/sync；保存真实提交数组、组内调用、25点最终颜色 B、至少10秒持续运行、多次缩放、三轮最小化恢复及可见/最小化关闭证据，验证暂停计数冻结、恢复推进与正常条件下5秒内退出0。
 - [x] 5.3 在可用环境运行 ASan 与静态分析并记录工具限制，完成 requirement/scenario 到 CPU、映射、真实 GPU、合成/故障控制的对应报告；不将模拟 MAILBOX/分族或注入失败报告为真实硬件条件，不声称 WaitIdle 保证呈现引擎完成。
-- [ ] 5.4 验收通过后更新 docs/STATUS.md 记录范围、验证结果及限制，核对 ARCHITECTURE 与最终代码一致；按项目规则仅暂存本 change 相关文件，以包含 prepare-render-group-recording 的独立提交交付，核实 remote/branch/upstream 后推送并报告 SHA、目标、验证和远端结果；未完成验收时只记录实际进度。
+- [x] 5.4 验收通过后更新 docs/STATUS.md 记录范围、验证结果及限制，核对 ARCHITECTURE 与最终代码一致；按项目规则仅暂存本 change 相关文件，以包含 prepare-render-group-recording 的独立提交交付，核实 remote/branch/upstream 后推送并报告 SHA、目标、验证和远端结果；未完成验收时只记录实际进度。
 
 ## Workflow follow-up
 

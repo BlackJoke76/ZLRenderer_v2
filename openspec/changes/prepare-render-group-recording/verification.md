@@ -53,3 +53,7 @@ Windows PowerShell 执行现有 scripts/verifyWindow.ps1；PowerShell 7 的 Syst
 | Release / minimized | 2300 / 2300 | 9 |
 
 本轮真实设备为 AMD Radeon RX 7900 XT，graphics/present family=0，FIFO、format=50、3张图像、2帧槽。双组各槽分配2个PRIMARY，稳定帧及重建后保持身份集合。
+
+## Git交付
+
+实施提交 086647f7f612d5be1d23b9b9260ab79922e78cb8 已推送至 origin/main，git ls-remote 确认 SHA 一致。17/17任务完成，主规格未同步、change未归档；最终勾选和交接回执随后续文档提交保存。

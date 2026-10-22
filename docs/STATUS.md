@@ -6,7 +6,7 @@ Debug/Release 各78/78 CTest；ASan Release 78/78（211.67秒），/analyze 六�
 
 实际 RX7900XT、同族0、FIFO、format50、3图像/2帧槽；MAILBOX/分族仍分别为纯选择/合成或代码覆盖。基础WSI的WaitIdle呈现引擎完成限制、采样绘制未提供、MSVC未运行UBSan均保持。只按原有具体AMD loader消息归因，没有放宽应用诊断规则。使用Windows PowerShell运行既有窗口脚本以满足System.Drawing引用，未修改产品范围。
 
-技术任务16/17已验证，最后一项Git交付进行中；目标已核实为 origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main。最终SHA及远端核对回执在下次交接更新和交付输出中记录。既有未跟踪 .agents/ 与两个 .gitkeep 保留。
+17/17任务完成。实施提交 [086647f7f612d5be1d23b9b9260ab79922e78cb8](https://github.com/BlackJoke76/ZLRenderer_v2/commit/086647f7f612d5be1d23b9b9260ab79922e78cb8) 已推送到 origin/main，git ls-remote核对远端SHA一致。目标为 origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main。本交付回执及最终任务勾选随独立文档提交保存，最终回执SHA见Git交付输出。既有未跟踪 .agents/ 与两个 .gitkeep 保留。
 
 2026-10-22，`add-minimal-render-graph` 已归档（spec-driven）：[完整报告](../openspec/changes/archive/2026-10-22-add-minimal-render-graph/verification.md)，归档目录为 `openspec/changes/archive/2026-10-22-add-minimal-render-graph/`。归档前20/20任务、全部规划材料完成，已核对2026-10-18独立复核结果；2026-10-19同步的 render-graph 主规格与delta的 Purpose、9条要求和30个场景完全一致。6个change文件（含 `.openspec.yaml`）移动前后SHA256一致，5份主规格及5个归档任务记录严格校验通过，当前活动change为空。哈希清单保存在忽略目录 `build-render-graph-verify/archive-manifest-2026-10-22.json`。
 

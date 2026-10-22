@@ -121,3 +121,36 @@ void validateGraphBindings(const CompiledRenderGraph& plan, std::span<const Grap
         }
     }
 }
+
+PreparedGraphFrame prepareGraphFrame(const CompiledRenderGraph& plan, std::span<const GraphImageBinding> bindings,
+    const SwapchainBindingContext& context, std::uint32_t frameSlot, std::span<const VkRenderPass> renderPassHandles) {
+    validateGraphRecordingSupport(plan);
+    validateGraphBindings(plan, bindings, context);
+    PreparedGraphFrame prepared{frameSlot, context.generation, context.acquiredImageIndex, plan.getVersion(),
+                                getGraphAcquireWaitStage(plan), {}};
+    prepared.groups.reserve(plan.getGroups().size());
+    for (std::size_t groupIndex = 0; groupIndex < plan.getGroups().size(); ++groupIndex) {
+        const auto& group = plan.getGroups()[groupIndex];
+        if (group.logicalPassIndices.size() != 1) {
+            throw std::runtime_error("graph preparation: only one raster pass per physical group is supported.");
+        }
+        const auto& pass = plan.getPasses().at(group.logicalPassIndices.front());
+        const auto& binding = bindings[pass.colorAttachment.colorTargetHandle.getIndex()];
+        const auto variant = getAttachmentVariant(pass.colorAttachment);
+        if (variant >= renderPassHandles.size() || !renderPassHandles[variant]) {
+            throw std::runtime_error("graph preparation: missing render pass variant.");
+        }
+        PreparedRenderGroup preparedGroup{groupIndex, pass.name, pass.colorAttachment, binding,
+            renderPassHandles[variant], makeGraphAttachment(pass.colorAttachment, binding.format), {}, {}};
+        const auto prepareBarriers = [&](const auto& transitions, auto& barriers) {
+            for (const auto& transition : transitions) {
+                barriers.push_back({mapGraphTransition(transition, bindings[transition.imageIndex].imageHandle),
+                                    transition.imageIndex, transition.reasons});
+            }
+        };
+        prepareBarriers(group.beforeTransitions, preparedGroup.beforeBarriers);
+        prepareBarriers(group.afterTransitions, preparedGroup.afterBarriers);
+        prepared.groups.push_back(std::move(preparedGroup));
+    }
+    return prepared;
+}

@@ -8,9 +8,9 @@
 
 `vulkanRenderGraph.h/.cpp` 统一映射用途和验证局部绑定。颜色附件写/读写对应 COLOR_ATTACHMENT_OUTPUT 与颜色 WRITE/READ，fragment 采样对应 FRAGMENT_SHADER/SHADER_READ；采样只完成 CPU/参数验证，当前录制入口明确拒绝需要采样绘制的计划。组边界通过显式 image barrier 转换，render pass 的 initial/subpass/finalLayout 都保持 COLOR_ATTACHMENT_OPTIMAL；同一转换只有一处执行。Render pass 按实际使用的 Clear/Load 与 Store/Discard 组合缓存（最多四种），同格式 framebuffer 复用兼容 render pass，不逐帧创建。当前没有自动合并算法，未来合并必须保留组内内容语义并重新降低同步。
 
-VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开；计划只有逻辑引用。Presenter acquire 后构造当前代局部图像绑定，检查缺失、过期、格式/extent 不符及多个逻辑图像绑定同一实际图像；不支持别名。全部执行组录制进同一帧槽 primary buffer，一次 submit。测试目标的双清屏仅增加一条附件声明，与生产共用编译、映射和录制。
+VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开；计划只有逻辑引用。Presenter acquire 后构造当前代局部图像绑定，检查缺失、过期、格式/extent 不符及多个逻辑图像绑定同一实际图像；不支持别名。成功 acquire 后由 prepareGraphFrame 校验并解析全部组，PreparedGraphFrame/PreparedRenderGroup 只保存本帧有效的值与借用句柄，不保存指向可移动结构的原生指针、不跨重建保存附件。每个帧槽 pool 预分配固定计划组数的 primary 数组，等待该槽完成后 reset pool 一次；recordRenderGroup 仅消费准备结果，每个完整组独立 begin/end，包含组前 barrier、完整 render pass 与组后 barrier。submitGraphFrame 在全部组录制成功后用一个 VkSubmitInfo 按组序一次 vkQueueSubmit，统一等待 acquire、signal 该图像 present semaphore 并关联一个槽 fence。当前明确只支持一 pass 一组，不自动合并。测试目标的双清屏仅增加一条附件声明，与生产共用编译、映射和录制。
 
-正常日志每个已执行代/计划版本首次提交输出 Graph plan/resource/dependency，以及从实际 barrier/begin/submit 输入采集的有界 Graph submitted/group/barrier 记录，present 返回后单独输出 request result。记录在提交成功后才发布；稳定帧不重复完整输出。测试目标额外采集前 12 帧。共享 checkRenderGraph.cmake 从实际参数核对顺序、绑定、WAW 和唯一呈现转换，颜色与同步 validation 作为另外两份证据，不能互相替代。
+正常日志每个已执行代/计划版本首次提交输出 Graph plan/resource/dependency，以及从实际 barrier/begin/submit 输入采集的有界 Graph submitted/group/barrier 记录，present 返回后单独输出 request result。记录在提交成功后才发布；稳定帧不重复完整输出。测试目标额外采集前 12 帧，记录实际 primary begin/end 与 VkSubmitInfo 的 count、按序 command 句柄；共享检查器核对完整组范围、独立句柄、真实数组和跨槽/跨重建复用，损坏记录必须拒绝。共享 checkRenderGraph.cmake 从实际参数核对顺序、绑定、WAW 和唯一呈现转换，颜色与同步 validation 作为另外两份证据，不能互相替代。
 
 ## 窗口与 Vulkan 生命周期
 
@@ -24,7 +24,7 @@ VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开
 
 | 资源 | 所有者及归属 | 完成与销毁条件 |
 |---|---|---|
-| command pool / primary buffer / acquire semaphore / submission fence | presenter，固定两个帧槽，按 frameIndex | 等待该槽 submission fence 后复位 pool 和重录；buffer 随 pool 释放 |
+| command pool / group primary array / acquire semaphore / submission fence | presenter，固定两个帧槽，按 frameIndex | 等待该槽 submission fence 后复位 pool 和重录；buffer 随 pool 释放 |
 | framebuffer / image view / present semaphore | presenter，按 imageIndex | 命令完成后清理 view/framebuffer；present semaphore 按再次获取图像的 acquire 同步复用 |
 | swapchain / render pass | presenter，每代交换链 | 重建、关闭停止提交并完成 GPU 工作后释放；格式变化重建 render pass |
 | swapchain image | swapchain 所有，presenter 借用 | 不调用 vkDestroyImage |
@@ -34,7 +34,7 @@ VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开
 
 默认线性清屏色为 `(0.05,0.10,0.20,1)`，通过 main 中 RhiConfig 改动；共用 clearColor.h 的检查拒绝非有限或 [0,1] 外分量。生产图声明单个颜色附件 CLEAR/STORE；显式获取边界 UNDEFINED→COLOR_ATTACHMENT_OPTIMAL，render pass 内保持该布局，最后显式转为 PRESENT_SRC_KHR。两次清屏之间的 WAW barrier 保持颜色附件布局，不重新退回 UNDEFINED。begin/end 覆盖整个 extent；没有 shader、pipeline 或 draw。
 
-正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → 验证图绑定 → reset该槽pool，按计划发出组前 barrier、录制对应 framebuffer 并发出组后 barrier → 提交前reset fence → 单次 submit 等待该槽acquire信号（阶段来自图的首次实际使用，当前为 COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。显式边界同步覆盖颜色写入和布局转换。只在submit成功后推进frameIndex/提交计数并发布图执行记录。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
+正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → 验证图绑定 → 准备全部组输入后reset该槽pool，每组独立primary按计划发出组前 barrier、录制对应 framebuffer 并发出组后 barrier → 提交前reset fence → 单次 submit 等待该槽acquire信号（阶段来自图的首次实际使用，当前为 COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。显式边界同步覆盖颜色写入和布局转换。只在submit成功后推进frameIndex/提交计数并发布图执行记录。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
 
 TIMEOUT/NOT_READY 跳帧；acquire OUT_OF_DATE 不reset fence，下次重建。成功获取的 SUBOPTIMAL 正常消费 acquire 信号、提交/呈现后再重建。present OUT_OF_DATE/SUBOPTIMAL 触发重建。录制/submit 失败终止正常循环；不会等待未提交的 fence。surface/device 丢失及其他不可恢复错误明确非零退出，不无限重试。
 

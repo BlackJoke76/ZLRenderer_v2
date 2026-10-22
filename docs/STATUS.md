@@ -1,5 +1,13 @@
 # 实际进度
 
+2026-10-22，`prepare-render-group-recording` 实施与技术验收通过，当前保持活动状态，未同步主规格或归档。[验收报告](../openspec/changes/prepare-render-group-recording/verification.md) 包含规格对应、原始证据位置和限制。帧准备、完整组录制、统一提交已分开；每帧槽预分配每物理组一个 primary，串行录制后按组序一个 VkSubmitInfo、一次 vkQueueSubmit。保留获取等待、组间 WAW、最终 present 转换、帧槽复用及全部命令引用解除后的旧代清理。后组失败不部分提交，成功提交后才推进状态。
+
+Debug/Release 各78/78 CTest；ASan Release 78/78（211.67秒），/analyze 六个C++目标无警告。八个窗口流程全部通过：Debug 默认2274/2274、最小化关闭2318/2318、替代色2099/2099、双清屏1462/1462；Release 对应2227/2227、2300/2300、2110/2110、1586/1586，均9代，25点颜色、至少10秒连续呈现、三轮最小化恢复、暂停冻结/恢复推进、5秒内退出0与资源平衡通过。Debug/Release 故障测试包括后组begin/body/end、分配前、reset-fence前、已提交3帧后submit失败、双组重建部分失败及NOT_READY；五类实际记录反例均被拒绝。完整日志/PNG在忽略目录 build-render-graph-verify/group-window 与 test-logs，ASan/静态分析构建目录继续独立。
+
+实际 RX7900XT、同族0、FIFO、format50、3图像/2帧槽；MAILBOX/分族仍分别为纯选择/合成或代码覆盖。基础WSI的WaitIdle呈现引擎完成限制、采样绘制未提供、MSVC未运行UBSan均保持。只按原有具体AMD loader消息归因，没有放宽应用诊断规则。使用Windows PowerShell运行既有窗口脚本以满足System.Drawing引用，未修改产品范围。
+
+技术任务16/17已验证，最后一项Git交付进行中；目标已核实为 origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main。最终SHA及远端核对回执在下次交接更新和交付输出中记录。既有未跟踪 .agents/ 与两个 .gitkeep 保留。
+
 2026-10-22，`add-minimal-render-graph` 已归档（spec-driven）：[完整报告](../openspec/changes/archive/2026-10-22-add-minimal-render-graph/verification.md)，归档目录为 `openspec/changes/archive/2026-10-22-add-minimal-render-graph/`。归档前20/20任务、全部规划材料完成，已核对2026-10-18独立复核结果；2026-10-19同步的 render-graph 主规格与delta的 Purpose、9条要求和30个场景完全一致。6个change文件（含 `.openspec.yaml`）移动前后SHA256一致，5份主规格及5个归档任务记录严格校验通过，当前活动change为空。哈希清单保存在忽略目录 `build-render-graph-verify/archive-manifest-2026-10-22.json`。
 
 本次仅归档及更新交接、路线图，未改产品代码或主规格，未重新运行构建/GPU测试；此前真实清屏、CPU/参数覆盖与基础WSI限制保持。提交推送目标为已核实的origin、main / origin/main，最终SHA及远端核对结果见本轮交付输出；既有未跟踪 .agents/ 与两个 .gitkeep 保留。下方实施、复核和同步记录保留当时状态，当前状态以本段为准。

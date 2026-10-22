@@ -5,8 +5,8 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -E env "ZL_VULKAN_TEST_CASE=${testCas
 file(MAKE_DIRECTORY "${logDirectory}")
 file(WRITE "${logDirectory}/${testCase}.stdout.log" "${standardOutput}")
 file(WRITE "${logDirectory}/${testCase}.stderr.log" "${standardError}")
-set(successCases normal fifo alternate fence-timeout acquire-timeout acquire-out-of-date acquire-suboptimal present-out-of-date present-suboptimal old-chain prepare-resize prepare-zero prepare-iconified initial-zero initial-iconified
-    surface-zero surface-variable-zero surface-width-zero graph-double)
+set(successCases acquire-not-ready normal fifo alternate fence-timeout acquire-timeout acquire-out-of-date acquire-suboptimal present-out-of-date present-suboptimal old-chain prepare-resize prepare-zero prepare-iconified initial-zero initial-iconified
+    surface-zero surface-variable-zero surface-width-zero graph-double double-rebuild)
 if(testCase STREQUAL "prepare-close" OR testCase STREQUAL "initial-zero-close")
     if(NOT exitCode STREQUAL "0" OR NOT standardOutput MATCHES "Controlled close before creation")
         message(FATAL_ERROR "Controlled close failed: ${exitCode}")
@@ -58,7 +58,7 @@ else()
     if(NOT exitCode STREQUAL "1" OR NOT standardError MATCHES "Renderer failed:")
         message(FATAL_ERROR "Expected error exit: exit=${exitCode}\n${standardOutput}\n${standardError}")
     endif()
-    if(testCase MATCHES "^(record|submit|graph-binding|graph-stale|graph-missing|graph-group|graph-unsupported)$" AND
+    if(testCase MATCHES "^(record|submit|graph-binding|graph-stale|graph-missing|graph-group|graph-unsupported|group-begin|group-body|group-end|reset-fence)$" AND
        NOT standardOutput MATCHES "Frame summary: submitted=0 presented=0")
         message(FATAL_ERROR "An aborted frame was counted as submitted")
     endif()
@@ -97,7 +97,7 @@ foreach(releaseLine IN LISTS releaseLines)
 endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/checkVulkanDiagnostics.cmake")
 set(expectedGraphGroups 1)
-if(testCase STREQUAL "graph-double" OR testCase STREQUAL "graph-group")
+if(testCase MATCHES "^(graph-double|graph-group|group-begin|group-body|group-end|double-rebuild|double-rebuild-failure|submit-later)$")
     set(expectedGraphGroups 2)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/checkRenderGraph.cmake")
@@ -196,5 +196,18 @@ if(testCase STREQUAL "initial-zero" OR testCase STREQUAL "initial-iconified")
     if(NOT standardOutput MATCHES "Presentation paused: .*generation=0 submitted=0" OR
        NOT standardOutput MATCHES "Swapchain ready generation=1")
         message(FATAL_ERROR "Initial deferred creation not covered")
+    endif()
+endif()
+
+if(testCase MATCHES "^group-(begin|body|end)$")
+    if(NOT standardOutput MATCHES "Recorded physical group=0" OR NOT standardError MATCHES "record group=1" OR
+       standardOutput MATCHES "Resetting submission fence|Graph submitted|Graph present request")
+        message(FATAL_ERROR "Partial recording was not aborted before fence reset and submission")
+    endif()
+endif()
+if(testCase STREQUAL "submit-later" OR testCase STREQUAL "double-rebuild-failure")
+    if(NOT standardOutput MATCHES "Frame summary: submitted=3 presented=3" OR
+       NOT standardOutput MATCHES "GPU completion wait result=0")
+        message(FATAL_ERROR "Earlier successful submissions not preserved on later failure")
     endif()
 endif()

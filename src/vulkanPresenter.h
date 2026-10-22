@@ -21,7 +21,7 @@ public:
 private:
     struct FrameResources {
         VkCommandPool commandPoolHandle = VK_NULL_HANDLE;
-        VkCommandBuffer commandBufferHandle = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> groupCommandBufferHandles;
         VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
         VkFence submissionFence = VK_NULL_HANDLE;
     };
@@ -57,7 +57,9 @@ private:
     std::unique_ptr<SwapchainResources> createSwapchain(const SwapchainConfiguration& configuration,
         VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle);
     void createRenderPass(SwapchainResources& resources, VkFormat colorFormat);
-    std::string recordGraphFrame(const FrameResources& frame, std::span<const GraphImageBinding> bindings, bool captureTrace);
+    std::string recordGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared, bool captureTrace);
+    static std::string recordRenderGroup(const PreparedRenderGroup& group, VkCommandBuffer commandBufferHandle, bool captureTrace);
+    std::string submitGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared, VkSemaphore renderFinishedSemaphore, bool captureTrace);
     bool rebuildSwapchain();
     VkResult waitForSubmissions() noexcept;
     static void releaseSwapchain(SwapchainResources& resources) noexcept;

@@ -10,17 +10,18 @@
 
 void runSwapchainTestCheckpoint(const char* stage, std::uint32_t generation) {
     runVulkanTestCheckpoint(stage, VK_NULL_HANDLE);
+    if (generation > 1 && std::strcmp(stage, "framebuffer") == 0 && isVulkanTestCase("double-rebuild-failure")) { throw std::runtime_error("double-rebuild-failure: injected after framebuffer creation"); }
     if (generation > 1 && isVulkanTestCase((std::string("rebuild-") + stage).c_str())) {
         throw std::runtime_error(std::string("rebuild-") + stage + ": injected failure after successful creation.");
     }
 }
 
 bool shouldRequestSwapchainTestRebuild(std::uint64_t submittedFrames, std::uint32_t generation) {
-    if (isVulkanTestCase("old-chain")) {
+    if (isVulkanTestCase("old-chain") || isVulkanTestCase("double-rebuild")) {
         return (submittedFrames == 3 && generation == 1) || (submittedFrames == 6 && generation == 2);
     }
     if (submittedFrames != 3 || generation != 1) { return false; }
-    for (const auto caseName : {"rebuild-failure", "rebuild-create", "rebuild-render-pass", "rebuild-image-view",
+    for (const auto caseName : {"double-rebuild-failure", "rebuild-failure", "rebuild-create", "rebuild-render-pass", "rebuild-image-view",
                                "rebuild-framebuffer", "rebuild-present-semaphore", "prepare-resize", "prepare-close",
                                "prepare-zero", "prepare-iconified", "surface-zero", "surface-variable-zero", "surface-width-zero"}) {
         if (isVulkanTestCase(caseName)) { return true; }

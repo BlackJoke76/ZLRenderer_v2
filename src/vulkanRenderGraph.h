@@ -38,3 +38,30 @@ VkPipelineStageFlags getGraphAcquireWaitStage(const CompiledRenderGraph& plan);
 void validateGraphRecordingSupport(const CompiledRenderGraph& plan);
 void validateGraphBindings(const CompiledRenderGraph& plan, std::span<const GraphImageBinding> bindings,
                            const SwapchainBindingContext& context);
+
+// Per-frame snapshots borrow handles; no pointers into movable native structures.
+struct PreparedGraphBarrier {
+    VulkanGraphBarrier mapped;
+    std::size_t imageIndex;
+    std::uint32_t reasons;
+};
+struct PreparedRenderGroup {
+    std::size_t groupIndex;
+    std::string passName;
+    ColorAttachmentDeclaration attachment;
+    GraphImageBinding binding;
+    VkRenderPass renderPassHandle;
+    VkAttachmentDescription attachmentDescription;
+    std::vector<PreparedGraphBarrier> beforeBarriers;
+    std::vector<PreparedGraphBarrier> afterBarriers;
+};
+struct PreparedGraphFrame {
+    std::uint32_t frameSlot;
+    std::uint32_t generation;
+    std::uint32_t acquiredImageIndex;
+    std::uint64_t planVersion;
+    VkPipelineStageFlags acquireWaitStage;
+    std::vector<PreparedRenderGroup> groups;
+};
+PreparedGraphFrame prepareGraphFrame(const CompiledRenderGraph& plan, std::span<const GraphImageBinding> bindings,
+    const SwapchainBindingContext& context, std::uint32_t frameSlot, std::span<const VkRenderPass> renderPassHandles);

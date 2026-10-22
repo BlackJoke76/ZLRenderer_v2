@@ -33,6 +33,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(renderGraphTests tests/renderGraphTests.cpp src/renderGraph.cpp)
     configureCppTarget(renderGraphTests)
+    add_test(NAME graph-primary-evidence COMMAND ${CMAKE_COMMAND} "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>" "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>/primary-rejections" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/checkGraphRejects.cmake")
     foreach(testCase declarations references shapes exits raw war waw readers contents)
         add_test(NAME graph-${testCase} COMMAND renderGraphTests ${testCase})
     endforeach()
@@ -71,7 +72,7 @@ if(BUILD_TESTING)
             old-chain rebuild-create rebuild-render-pass rebuild-image-view rebuild-framebuffer rebuild-present-semaphore
             prepare-resize prepare-close prepare-zero prepare-iconified initial-zero initial-iconified initial-zero-close
             surface-zero surface-variable-zero surface-width-zero
-            graph-double graph-binding graph-stale graph-missing graph-group graph-unsupported)
+            primary-allocation submit-later double-rebuild-failure acquire-not-ready group-begin group-body group-end reset-fence double-rebuild graph-double graph-binding graph-stale graph-missing graph-group graph-unsupported)
         add_test(NAME presentation-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
             "-DtestCase=${testCase}"

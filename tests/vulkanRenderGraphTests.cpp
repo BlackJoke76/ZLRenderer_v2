@@ -111,9 +111,28 @@ void recording() {
     graph.addRasterPass({"clearA", {targetHandle}, {}});
     graph.addRasterPass({"clearB", {targetHandle}, {}});
     graph.setPresentTarget(targetHandle);
-    validateGraphRecordingSupport(graph.compile());
+    const auto plan = graph.compile();
+    validateGraphRecordingSupport(plan);
+    const std::array bindings{makeBinding(targetHandle, 11)};
+    const SwapchainBindingContext context{3, 2, VK_FORMAT_B8G8R8A8_SRGB, {640,480}};
+    const std::array renderPasses{reinterpret_cast<VkRenderPass>(std::uintptr_t{300})};
+    const auto prepared = prepareGraphFrame(plan, bindings, context, 0, renderPasses);
+    require(prepared.frameSlot == 0 && prepared.acquiredImageIndex == 2 && prepared.generation == 3 &&
+            prepared.planVersion == plan.getVersion() && prepared.groups.size() == 2, "Frame snapshot lost identity");
+    require(prepared.groups[0].beforeBarriers.size() == 1 && prepared.groups[0].afterBarriers.empty() &&
+            prepared.groups[1].beforeBarriers.size() == 1 && prepared.groups[1].afterBarriers.size() == 1,
+            "Preparation lost physical boundary transitions");
+    require(prepared.groups[1].beforeBarriers[0].mapped.imageBarrier.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL &&
+            prepared.groups[1].afterBarriers[0].mapped.imageBarrier.newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR &&
+            prepared.groups[1].binding.imageHandle == bindings[0].imageHandle, "Wrong prepared image or layout");
+    expectFailure([&] { prepareGraphFrame(plan, {}, context, 0, renderPasses); }, "missing");
+    auto stale = bindings;
+    stale[0].generation = 1;
+    expectFailure([&] { prepareGraphFrame(plan, stale, context, 0, renderPasses); }, "stale");
+    expectFailure([&] { prepareGraphFrame(plan, bindings, context, 0, {}); }, "render pass");
     const auto sampledHandle = graph.importImage({"sampled", ExternalImageRole::color, ImageUse::fragmentSampledRead, true});
     graph.addRasterPass({"sampling", {targetHandle}, {sampledHandle}});
+    expectFailure([&] { prepareGraphFrame(graph.compile(), bindings, context, 0, renderPasses); }, "sampled drawing");
     expectFailure([&] { validateGraphRecordingSupport(graph.compile()); }, "sampled drawing");
     expectFailure([&] { validateGraphRecordingSupport(CompiledRenderGraph{}); }, "executable plan");
 }

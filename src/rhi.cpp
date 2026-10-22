@@ -28,7 +28,7 @@ void Rhi::initialize(GLFWwindow* windowHandle, const RhiConfig& config) {
         sampledImages.push_back(backend->graph.importImage({"unsupportedSample", ExternalImageRole::color,
                                                           ImageUse::fragmentSampledRead, true}));
     }
-    if (isVulkanTestCase("graph-double") || isVulkanTestCase("graph-double-window") || isVulkanTestCase("graph-group")) {
+    if (isVulkanTestCase("graph-double") || isVulkanTestCase("graph-double-window") || isVulkanTestCase("graph-group") || isVulkanTestCase("group-begin") || isVulkanTestCase("group-body") || isVulkanTestCase("group-end") || isVulkanTestCase("double-rebuild") || isVulkanTestCase("submit-later") || isVulkanTestCase("double-rebuild-failure")) {
         backend->graph.addRasterPass({"clearA", {colorTargetHandle, AttachmentLoad::clear, AttachmentStore::store,
                                                 {0.20f, 0.05f, 0.10f, 1.0f}}, {}});
     }

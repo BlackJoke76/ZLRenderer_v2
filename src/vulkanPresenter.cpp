@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <exception>
 #include <optional>
+#include <limits>
 #include <sstream>
 #ifdef ZL_RENDERER_TESTING
 #include "vulkanTestHooks.h"
@@ -99,11 +100,17 @@ void VulkanPresenter::createFrameResources() {
         allocationInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocationInfo.commandPool = frame.commandPoolHandle;
         allocationInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocationInfo.commandBufferCount = 1;
-        VkCommandBuffer createdBufferHandle = VK_NULL_HANDLE;
-        checkResult(vkAllocateCommandBuffers(deviceView.deviceHandle, &allocationInfo, &createdBufferHandle),
+        if (graphPlan->getGroups().size() > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::runtime_error("frames: physical group count overflow.");
+        }
+        allocationInfo.commandBufferCount = static_cast<std::uint32_t>(graphPlan->getGroups().size());
+        frame.groupCommandBufferHandles.resize(allocationInfo.commandBufferCount, VK_NULL_HANDLE);
+#ifdef ZL_RENDERER_TESTING
+        runVulkanTestCheckpoint("primary-allocation", VK_NULL_HANDLE);
+#endif
+        checkResult(vkAllocateCommandBuffers(deviceView.deviceHandle, &allocationInfo, frame.groupCommandBufferHandles.data()),
                     "frames: vkAllocateCommandBuffers");
-        frame.commandBufferHandle = createdBufferHandle;
+        std::printf("Allocated group primaries count=%u\n", allocationInfo.commandBufferCount);
         frame.imageAvailableSemaphore = createSemaphore(deviceView.deviceHandle);
         std::puts("Created acquire semaphore");
         VkFenceCreateInfo fenceInfo{};
@@ -252,24 +259,35 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
     return resources;
 }
 
-std::string VulkanPresenter::recordGraphFrame(const FrameResources& frame, std::span<const GraphImageBinding> bindings,
+std::string VulkanPresenter::recordGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared,
                                              bool captureTrace) {
     checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "record: vkResetCommandPool");
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("record", VK_NULL_HANDLE);
 #endif
+    std::string trace;
+    for (std::size_t groupIndex = 0; groupIndex < prepared.groups.size(); ++groupIndex) {
+        try {
+            trace += recordRenderGroup(prepared.groups[groupIndex], frame.groupCommandBufferHandles.at(groupIndex), captureTrace);
+        } catch (const std::exception& error) {
+            throw std::runtime_error("record group=" + std::to_string(groupIndex) + ": " + error.what());
+        }
+    }
+    return trace;
+}
+
+std::string VulkanPresenter::recordRenderGroup(const PreparedRenderGroup& group, VkCommandBuffer commandBufferHandle, bool captureTrace) {
+    const auto groupIndex = group.groupIndex;
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    checkResult(vkBeginCommandBuffer(frame.commandBufferHandle, &beginInfo), "record: vkBeginCommandBuffer");
     std::optional<std::ostringstream> trace;
     if (captureTrace) { trace.emplace(); }
-    const auto emitTransitions = [&](std::size_t groupIndex, const char* boundary,
-                                     const std::vector<GraphImageTransition>& transitions) {
+    const auto emitTransitions = [&](VkCommandBuffer commandBufferHandle, std::size_t groupIndex, const char* boundary,
+                                     const std::vector<PreparedGraphBarrier>& transitions) {
         for (const auto& transition : transitions) {
-            const auto& binding = bindings[transition.imageIndex];
-            const auto mapped = mapGraphTransition(transition, binding.imageHandle);
-            vkCmdPipelineBarrier(frame.commandBufferHandle, mapped.sourceStages, mapped.destinationStages, 0,
+            const auto& mapped = transition.mapped;
+            vkCmdPipelineBarrier(commandBufferHandle, mapped.sourceStages, mapped.destinationStages, 0,
                                  0, nullptr, 0, nullptr, 1, &mapped.imageBarrier);
             if (trace) {
                 const auto& barrier = mapped.imageBarrier;
@@ -282,45 +300,94 @@ std::string VulkanPresenter::recordGraphFrame(const FrameResources& frame, std::
             }
         }
     };
-    for (std::size_t groupIndex = 0; groupIndex < graphPlan->getGroups().size(); ++groupIndex) {
-        const auto& group = graphPlan->getGroups()[groupIndex];
-        emitTransitions(groupIndex, "before", group.beforeTransitions);
-        const auto& attachment = graphPlan->getPasses()[group.logicalPassIndices.front()].colorAttachment;
-        const auto& binding = bindings[attachment.colorTargetHandle.getIndex()];
-        const auto& clearColor = attachment.clearColor;
-        const VkClearValue clearValue{{{clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha}}};
-        VkRenderPassBeginInfo passInfo{};
-        passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        passInfo.renderPass = swapchainResources->renderPassHandles[getAttachmentVariant(attachment)];
-        passInfo.framebuffer = binding.framebufferHandle;
-        passInfo.renderArea.extent = binding.extent;
-        passInfo.clearValueCount = 1;
-        passInfo.pClearValues = &clearValue;
-        vkCmdBeginRenderPass(frame.commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
-        for (const auto passIndex : group.logicalPassIndices) {
-            if (trace) {
-                const auto actualAttachment = makeGraphAttachment(graphPlan->getPasses()[passIndex].colorAttachment, binding.format);
-                *trace << "Graph group group=" << groupIndex << " pass=" << graphPlan->getPasses()[passIndex].name
-                       << " resource=" << attachment.colorTargetHandle.getIndex()
-                       << " imageHandle=" << reinterpret_cast<std::uintptr_t>(binding.imageHandle)
-                       << " framebuffer=" << reinterpret_cast<std::uintptr_t>(passInfo.framebuffer)
-                       << " renderPass=" << reinterpret_cast<std::uintptr_t>(passInfo.renderPass)
-                       << " extent=" << passInfo.renderArea.extent.width << 'x' << passInfo.renderArea.extent.height
-                       << " load=" << actualAttachment.loadOp << " store=" << actualAttachment.storeOp
-                       << " initialLayout=" << actualAttachment.initialLayout << " finalLayout=" << actualAttachment.finalLayout
-                       << " clearColor=(" << clearValue.color.float32[0] << ',' << clearValue.color.float32[1] << ','
-                       << clearValue.color.float32[2] << ',' << clearValue.color.float32[3] << ")\n";
-            }
-            // This change's pass body is empty: attachment load/store performs the clear/preserve work.
-        }
-        vkCmdEndRenderPass(frame.commandBufferHandle);
 #ifdef ZL_RENDERER_TESTING
-        if (groupIndex == 0) { runVulkanTestCheckpoint("graph-group", VK_NULL_HANDLE); }
+    if (groupIndex == 1) { runVulkanTestCheckpoint("group-begin", VK_NULL_HANDLE); }
 #endif
-        emitTransitions(groupIndex, "after", group.afterTransitions);
+    checkResult(vkBeginCommandBuffer(commandBufferHandle, &beginInfo), "record: vkBeginCommandBuffer");
+    if (trace) { *trace << "Graph primary begin group=" << groupIndex << " command=" << reinterpret_cast<std::uintptr_t>(commandBufferHandle) << '\n'; }
+    const auto& attachment = group.attachment;
+    const auto& binding = group.binding;
+    emitTransitions(commandBufferHandle, groupIndex, "before", group.beforeBarriers);
+    const auto& clearColor = attachment.clearColor;
+    const VkClearValue clearValue{{{clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha}}};
+    VkRenderPassBeginInfo passInfo{};
+    passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    passInfo.renderPass = group.renderPassHandle;
+    passInfo.framebuffer = binding.framebufferHandle;
+    passInfo.renderArea.extent = binding.extent;
+    passInfo.clearValueCount = 1;
+    passInfo.pClearValues = &clearValue;
+    vkCmdBeginRenderPass(commandBufferHandle, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+    {
+        if (trace) {
+            const auto& actualAttachment = group.attachmentDescription;
+            *trace << "Graph group group=" << groupIndex << " pass=" << group.passName
+                   << " resource=" << attachment.colorTargetHandle.getIndex()
+                   << " imageHandle=" << reinterpret_cast<std::uintptr_t>(binding.imageHandle)
+                   << " framebuffer=" << reinterpret_cast<std::uintptr_t>(passInfo.framebuffer)
+                   << " renderPass=" << reinterpret_cast<std::uintptr_t>(passInfo.renderPass)
+                   << " extent=" << passInfo.renderArea.extent.width << 'x' << passInfo.renderArea.extent.height
+                   << " load=" << actualAttachment.loadOp << " store=" << actualAttachment.storeOp
+                   << " initialLayout=" << actualAttachment.initialLayout << " finalLayout=" << actualAttachment.finalLayout
+                   << " clearColor=(" << clearValue.color.float32[0] << ',' << clearValue.color.float32[1] << ','
+                   << clearValue.color.float32[2] << ',' << clearValue.color.float32[3] << ")\n";
+        }
+        // This change's pass body is empty: attachment load/store performs the clear/preserve work.
     }
-    checkResult(vkEndCommandBuffer(frame.commandBufferHandle), "record: vkEndCommandBuffer");
+#ifdef ZL_RENDERER_TESTING
+    if (groupIndex == 1) { runVulkanTestCheckpoint("group-body", VK_NULL_HANDLE); }
+#endif
+    vkCmdEndRenderPass(commandBufferHandle);
+#ifdef ZL_RENDERER_TESTING
+    if (groupIndex == 0) { runVulkanTestCheckpoint("graph-group", VK_NULL_HANDLE); }
+#endif
+    emitTransitions(commandBufferHandle, groupIndex, "after", group.afterBarriers);
+#ifdef ZL_RENDERER_TESTING
+    if (groupIndex == 1) { runVulkanTestCheckpoint("group-end", VK_NULL_HANDLE); }
+#endif
+    checkResult(vkEndCommandBuffer(commandBufferHandle), "record: vkEndCommandBuffer");
+    if (trace) { *trace << "Graph primary end group=" << groupIndex << " command=" << reinterpret_cast<std::uintptr_t>(commandBufferHandle) << '\n'; }
+#ifdef ZL_RENDERER_TESTING
+    std::printf("Recorded physical group=%zu\n", groupIndex);
+#endif
     return trace ? trace->str() : std::string{};
+}
+
+std::string VulkanPresenter::submitGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared,
+    VkSemaphore renderFinishedSemaphore, bool captureTrace) {
+    const auto waitStage = prepared.acquireWaitStage;
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &frame.imageAvailableSemaphore;
+    submitInfo.pWaitDstStageMask = &waitStage;
+    submitInfo.commandBufferCount = static_cast<std::uint32_t>(frame.groupCommandBufferHandles.size());
+    submitInfo.pCommandBuffers = frame.groupCommandBufferHandles.data();
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+    std::ostringstream trace;
+    if (captureTrace) {
+        trace << "Graph submit inputs count=" << submitInfo.commandBufferCount << " waits=" << submitInfo.waitSemaphoreCount
+              << " signals=" << submitInfo.signalSemaphoreCount << '\n';
+        for (std::uint32_t commandIndex = 0; commandIndex < submitInfo.commandBufferCount; ++commandIndex) {
+            trace << "Graph submit command index=" << commandIndex << " command="
+                  << reinterpret_cast<std::uintptr_t>(submitInfo.pCommandBuffers[commandIndex]) << '\n';
+        }
+    }
+    auto submitTrace = trace.str();
+#ifdef ZL_RENDERER_TESTING
+    runVulkanTestCheckpoint("reset-fence", VK_NULL_HANDLE);
+    std::puts("Resetting submission fence");
+#endif
+    checkResult(vkResetFences(deviceView.deviceHandle, 1, &frame.submissionFence), "submit: vkResetFences");
+    VkResult submitResult;
+#ifdef ZL_RENDERER_TESTING
+    if (isVulkanTestCase("submit") || (isVulkanTestCase("submit-later") && submittedFrames == 3)) { submitResult = VK_ERROR_INITIALIZATION_FAILED; }
+    else
+#endif
+    { submitResult = vkQueueSubmit(deviceView.graphicsQueueHandle, 1, &submitInfo, frame.submissionFence); }
+    checkResult(submitResult, "submit: vkQueueSubmit");
+    return submitTrace;
 }
 
 void VulkanPresenter::renderFrame() {
@@ -350,9 +417,9 @@ void VulkanPresenter::renderFrame() {
     VkResult acquireResult;
 #ifdef ZL_RENDERER_TESTING
     if (!testInjectionUsed && (isVulkanTestCase("acquire-out-of-date") || isVulkanTestCase("acquire-timeout") ||
-                               isVulkanTestCase("surface-lost"))) {
+                               isVulkanTestCase("surface-lost") || isVulkanTestCase("acquire-not-ready"))) {
         testInjectionUsed = true;
-        acquireResult = isVulkanTestCase("surface-lost") ? VK_ERROR_SURFACE_LOST_KHR :
+        acquireResult = isVulkanTestCase("acquire-not-ready") ? VK_NOT_READY : isVulkanTestCase("surface-lost") ? VK_ERROR_SURFACE_LOST_KHR :
                         isVulkanTestCase("acquire-timeout") ? VK_TIMEOUT : VK_ERROR_OUT_OF_DATE_KHR;
         std::printf("Injected acquire result=%d before actual acquisition\n", acquireResult);
     } else
@@ -387,25 +454,11 @@ void VulkanPresenter::renderFrame() {
 #ifdef ZL_RENDERER_TESTING
     captureTrace = captureTrace || submittedFrames < 12;
 #endif
-    const auto graphTrace = recordGraphFrame(frame, bindings, captureTrace);
-    const auto waitStage = getGraphAcquireWaitStage(*graphPlan);
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &frame.imageAvailableSemaphore;
-    submitInfo.pWaitDstStageMask = &waitStage;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &frame.commandBufferHandle;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &image.renderFinishedSemaphore;
-    checkResult(vkResetFences(deviceView.deviceHandle, 1, &frame.submissionFence), "submit: vkResetFences");
-    VkResult submitResult;
-#ifdef ZL_RENDERER_TESTING
-    if (isVulkanTestCase("submit")) { submitResult = VK_ERROR_INITIALIZATION_FAILED; }
-    else
-#endif
-    { submitResult = vkQueueSubmit(deviceView.graphicsQueueHandle, 1, &submitInfo, frame.submissionFence); }
-    checkResult(submitResult, "submit: vkQueueSubmit");
+    const auto prepared = prepareGraphFrame(*graphPlan, bindings,
+        {swapchainGeneration, imageIndex, swapchainResources->colorFormat, swapchainResources->renderExtent},
+        frameIndex, swapchainResources->renderPassHandles);
+    const auto graphTrace = recordGraphFrame(frame, prepared, captureTrace);
+    const auto submitTrace = submitGraphFrame(frame, prepared, image.renderFinishedSemaphore, captureTrace);
     hasSubmittedWork = true;
     ++submittedFrames;
     if (reportPlan) {
@@ -428,9 +481,11 @@ void VulkanPresenter::renderFrame() {
         reportedPlanVersion = graphPlan->getVersion();
     }
     if (captureTrace) {
-        std::printf("Graph submitted frame=%llu generation=%u version=%llu slot=%u image=%u groups=%zu submits=1 waitStage=%u\n%sGraph record end\n",
+        std::printf("Graph submitted frame=%llu generation=%u version=%llu slot=%u image=%u groups=%zu submits=1 waitStage=%u\n%s",
             static_cast<unsigned long long>(submittedFrames), swapchainGeneration,
-            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size(), waitStage, graphTrace.c_str());
+            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size(), prepared.acquireWaitStage, graphTrace.c_str());
+        std::printf("%s", submitTrace.c_str());
+        std::puts("Graph record end");
     }
 #ifdef ZL_RENDERER_TESTING
     if (submittedFrames <= 12) {
@@ -438,7 +493,7 @@ void VulkanPresenter::renderFrame() {
                     reinterpret_cast<void*>(image.framebufferHandle), reinterpret_cast<void*>(swapchainResources->renderPassHandles[
                         getAttachmentVariant(graphPlan->getPasses().front().colorAttachment)]));
         std::printf("Frame submitted slot=%u image=%u command=%p acquire=%p present=%p fence=%p generation=%u\n", frameIndex, imageIndex,
-                    static_cast<void*>(frame.commandBufferHandle), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
+                    static_cast<void*>(frame.groupCommandBufferHandles.front()), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
                     reinterpret_cast<void*>(image.renderFinishedSemaphore), reinterpret_cast<void*>(frame.submissionFence), swapchainGeneration);
     }
 #endif
@@ -579,7 +634,7 @@ void VulkanPresenter::releaseResources() noexcept {
         if (frame.commandPoolHandle) {
             vkDestroyCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, nullptr);
             frame.commandPoolHandle = VK_NULL_HANDLE;
-            frame.commandBufferHandle = VK_NULL_HANDLE;
+            frame.groupCommandBufferHandles.clear();
             std::puts("Released command pool");
         }
     }

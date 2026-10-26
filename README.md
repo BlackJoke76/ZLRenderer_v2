@@ -44,7 +44,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 要验证从头构建，使用新的目录（例如将以上 `build` 替换为 `build-clean`），避免依赖已有构建缓存。初始化、窗口创建或运行失败会向标准错误输出阶段和原因，并返回非零退出码。
 
-CTest 默认开启，目前共 68 项：保留队列/交换链选择、实际 Vulkan 初始化回滚、帧复用、FIFO、替代色、超时、oldSwapchain 整代替换、候选失败及暂停恢复等 50 项回归；新增 9 项无 GPU 的图编译测试、3 项后端参数/绑定/执行能力检查和 6 项真实后端图执行/错误控制。图编译测试不链接 Vulkan/GLFW；实际呈现测试仍需上述 SDK、驱动与桌面。参数绑定测试使用 host-only 句柄，不提交伪造对象。故障注入只在 `vulkanLifecycleTests` 目标编译，正常应用没有注入开关。只构建应用可在配置时指定 `-DBUILD_TESTING=OFF`。
+CTest 默认开启，默认图形配置包含78项既有回归和26项纯CPU任务测试，实际结果见 docs/STATUS.md。既有回归覆盖图编译、后端参数/绑定、队列与交换链选择、Vulkan初始化回滚、帧复用、超时、SUBOPTIMAL/OUT_OF_DATE、oldSwapchain替换和组录制/提交错误控制；任务测试覆盖0/1/4 worker、等待、失败汇总、关闭和100轮关键案例。CPU-only配置只生成任务模块和26项任务测试，不依赖图形SDK、GLFW、驱动或桌面。实际呈现测试仍需图形前置条件；参数绑定测试使用host-only句柄，不提交伪造对象。故障注入只在独立测试目标编译，正常库与应用没有注入开关。关闭测试可用 `-DBUILD_TESTING=OFF`。
 
 清屏颜色在 `src/main.cpp` 中初始化 `RhiConfig rendererConfig` 时指定，例如 `rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};`，重新编译后生效；分量必须有限且位于 [0,1]。颜色编码依据实际所选格式，配置无需修改帧同步代码。
 
@@ -121,3 +121,38 @@ Debug/Release 均启用基础 validation。窗口脚本只给其子进程设置 
 - [开发规则](AGENTS.md)
 
 OpenSpec 变更记录位于 `openspec/changes`；验收通过后按项目规则独立提交并推送。
+
+## 纯 CPU 任务执行器
+
+任务模块可以不安装 Vulkan SDK、不下载 GLFW，也不创建窗口或设备。需要 CMake 3.24+、C++20 编译器和平台线程支持；以下从项目根目录在新目录构建：
+
+```powershell
+cmake -S . -B build-task-system -G "Visual Studio 17 2022" -A x64 -DZL_BUILD_RENDERER=OFF -DBUILD_TESTING=ON
+cmake --build build-task-system --config Debug --parallel
+ctest --test-dir build-task-system -C Debug --output-on-failure
+cmake --build build-task-system --config Release --parallel
+ctest --test-dir build-task-system -C Release --output-on-failure
+```
+
+库为 `build-task-system/<配置>/taskSystem.lib`，测试为同目录的 `taskSystemTests.exe`；`BUILD_TESTING=OFF` 只构建库。`ZL_BUILD_RENDERER` 默认ON，保留原图形配置和全部现有测试。CPU模块未接入presenter，当前物理执行组仍串行录制。
+
+一个协调线程构造 `TaskSystem(workerCount)`、串行调用 `submitBatch(tasks)` 和 `shutdown()`；有效批次句柄可在多个外部线程上 `wait()`。回调签名为 `void(std::size_t workerIndex)`，借用对象由调用者保证在本批完成前存活；回调不得重入同执行器的提交、等待、关闭或销毁。零worker在提交线程按输入顺序执行并在submitBatch返回前完成；正数使用固定工作线程，worker索引稳定，等待者不帮助执行。
+
+```cpp
+TaskSystem executor(4);
+auto batch = executor.submitBatch({
+    [](std::size_t workerIndex) { (void)workerIndex; },
+    [](std::size_t) { throw std::runtime_error("task failed"); }
+});
+const auto& result = batch.wait(); // 全批完成；不自动抛出任务异常。
+for (std::size_t taskIndex = 0; taskIndex < result.taskExceptions.size(); ++taskIndex) {
+    if (result.taskExceptions[taskIndex]) {
+        // taskIndex 是原任务索引；按需 std::rethrow_exception(...) 检查具体异常。
+    }
+}
+executor.shutdown();
+```
+
+示例需包含 `taskSystem.h` 和 `<stdexcept>`。`failedTaskCount` 是失败数；每个任务的异常槽预分配，成功项为空，非标准异常也会被保留。单个失败不取消其他任务，worker能继续执行后续批次。结果引用在至少一个该批句柄存活期间有效，不得保存来自临时句柄且无其他句柄持有的悬空引用。
+
+句柄可以复制/移动，重复等待结果相同；丢弃句柄不取消工作。关闭停止接受新批次，排空全部已接受工作并join全部线程，可重复关闭；析构执行同样的排空，不传播任务异常。任务必须最终返回或抛异常，不提供强制取消或依赖调度。保留句柄可在执行器析构后继续等待/读取结果；CPU完成不代表任何GPU工作完成。

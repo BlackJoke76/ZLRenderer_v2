@@ -1,5 +1,13 @@
 # 实际进度
 
+2026-10-26，`add-recording-task-system` 纯CPU任务执行器实施及技术验收完成，当前活动change未同步主规格或归档。[验收报告](../openspec/changes/add-recording-task-system/verification.md) 逐项关联19个场景、测试与证据。TaskSystem提供任务批次、零worker内联/固定worker执行、稳定worker索引、完成句柄、按任务索引保留异常、等待全批、排空关闭及析构；句柄丢弃不取消工作，保留句柄可跨执行器生命周期。一个协调线程提交/关闭，回调不重入同执行器控制接口，任务必须最终终结，不提供取消或任务依赖图。
+
+独立新目录 `build-task-system` 在禁用Vulkan查找、图形下载断开、GLFW源无效的控制条件下配置成功；CPU目标与测试不引用/链接Vulkan/GLFW/RenderGraph，无_deps，关闭测试时仅构建任务库。CPU Debug/Release各26/26（9.94/9.86秒），ASan Release 26/26（10.83秒），库和两测试目标/analyze无警告；0/1/4 worker的关键等待/批次/丢句柄/异常/关闭各100轮。四worker门控证明4个真实线程同时在途及后续索引稳定；创建第0/1/3个worker前与批次接受前故障注入只证明host控制和已启动线程回收，不宣称OS/分配器自然失败。正常库二进制不包含测试钩子。
+
+默认renderer=ON Debug/Release各104/104（50.63/46.65秒），即原78项回归加26项任务测试。所有既有renderer源文件及串行录制调用链无改动，任务库未接入应用；本轮未重跑像素窗口流程，也不宣称Vulkan并行录制或性能收益。当前MSVC环境无可用Clang工具链，TSan/UBSan未运行，不把ASan或压力重复当作数据竞争证明。原始日志及生成项目在忽略的build-task-system*目录，详细命令、案例、控制条件和限制见报告。
+
+技术任务14/15已验证，最后Git交付进行中；已核实目标origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，分支main/upstream origin/main。提交与远端回执将在交付后补充，既有未跟踪.agents/和两个.gitkeep保持。`prepare-render-group-recording`仍保持原完成/未归档状态。
+
 2026-10-22，`prepare-render-group-recording` 实施与技术验收通过，当前保持活动状态，未同步主规格或归档。[验收报告](../openspec/changes/prepare-render-group-recording/verification.md) 包含规格对应、原始证据位置和限制。帧准备、完整组录制、统一提交已分开；每帧槽预分配每物理组一个 primary，串行录制后按组序一个 VkSubmitInfo、一次 vkQueueSubmit。保留获取等待、组间 WAW、最终 present 转换、帧槽复用及全部命令引用解除后的旧代清理。后组失败不部分提交，成功提交后才推进状态。
 
 Debug/Release 各78/78 CTest；ASan Release 78/78（211.67秒），/analyze 六个C++目标无警告。八个窗口流程全部通过：Debug 默认2274/2274、最小化关闭2318/2318、替代色2099/2099、双清屏1462/1462；Release 对应2227/2227、2300/2300、2110/2110、1586/1586，均9代，25点颜色、至少10秒连续呈现、三轮最小化恢复、暂停冻结/恢复推进、5秒内退出0与资源平衡通过。Debug/Release 故障测试包括后组begin/body/end、分配前、reset-fence前、已提交3帧后submit失败、双组重建部分失败及NOT_READY；五类实际记录反例均被拒绝。完整日志/PNG在忽略目录 build-render-graph-verify/group-window 与 test-logs，ASan/静态分析构建目录继续独立。

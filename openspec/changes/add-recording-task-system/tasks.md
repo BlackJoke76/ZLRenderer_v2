@@ -25,7 +25,7 @@
 - [x] 4.1 使用全新CPU构建目录在禁用Vulkan查找、断开FetchContent且给无效GLFW源目录的控制条件下完成Debug/Release全部任务测试，并验证BUILD_TESTING=OFF任务库构建；检查生成目标/链接输入无图形依赖，保存配置/构建/测试命令、日志和实际测试数，不依赖旧缓存。
 - [x] 4.2 对0/1/4 worker的关键等待、失败、丢弃句柄和关闭案例重复至少100轮，保存轮数；所有测试设置TIMEOUT，门控在断言失败时也可靠释放；运行可用ASan/静态分析及可用的TSan/UBSan，记录工具不可用项，不能把重复测试或ASan报告成数据竞争检测通过。
 - [x] 4.3 默认renderer=ON完成Debug/Release构建及全部现有CTest加新CPU测试，确认现有串行组录制调用未变化；严格校验change、运行git diff --check，在verification.md逐条关联规格场景与CPU/真实线程/控制注入证据；无需重做像素窗口验收，不宣称Vulkan并行或性能收益。
-- [ ] 4.4 验收后更新STATUS与ROADMAP区分已完成组录制准备、CPU执行器和未来并行录制接入，核对README/ARCHITECTURE与最终实现一致；按项目规则仅暂存本change相关文件，独立提交并核实remote/branch/upstream后推送，报告SHA、目标分支、验证与远端结果；阻塞或未验收时只记录真实进度。
+- [x] 4.4 验收后更新STATUS与ROADMAP区分已完成组录制准备、CPU执行器和未来并行录制接入，核对README/ARCHITECTURE与最终实现一致；按项目规则仅暂存本change相关文件，独立提交并核实remote/branch/upstream后推送，报告SHA、目标分支、验证与远端结果；阻塞或未验收时只记录真实进度。
 
 ## Workflow follow-up
 

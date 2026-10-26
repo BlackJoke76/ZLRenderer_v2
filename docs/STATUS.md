@@ -6,7 +6,7 @@
 
 默认renderer=ON Debug/Release各104/104（50.63/46.65秒），即原78项回归加26项任务测试。所有既有renderer源文件及串行录制调用链无改动，任务库未接入应用；本轮未重跑像素窗口流程，也不宣称Vulkan并行录制或性能收益。当前MSVC环境无可用Clang工具链，TSan/UBSan未运行，不把ASan或压力重复当作数据竞争证明。原始日志及生成项目在忽略的build-task-system*目录，详细命令、案例、控制条件和限制见报告。
 
-技术任务14/15已验证，最后Git交付进行中；已核实目标origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，分支main/upstream origin/main。提交与远端回执将在交付后补充，既有未跟踪.agents/和两个.gitkeep保持。`prepare-render-group-recording`仍保持原完成/未归档状态。
+15/15任务完成。实施提交 [6994f0404dbfc249d4799e8968e734980fa58fd4](https://github.com/BlackJoke76/ZLRenderer_v2/commit/6994f0404dbfc249d4799e8968e734980fa58fd4) 已推送至origin/main，git ls-remote核实SHA一致；目标origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，分支main/upstream origin/main。本最终任务勾选与回执随独立文档提交保存，最终回执SHA以Git交付输出为准。既有未跟踪.agents/和两个.gitkeep保持。`prepare-render-group-recording`仍保持原完成/未归档状态。
 
 2026-10-22，`prepare-render-group-recording` 实施与技术验收通过，当前保持活动状态，未同步主规格或归档。[验收报告](../openspec/changes/prepare-render-group-recording/verification.md) 包含规格对应、原始证据位置和限制。帧准备、完整组录制、统一提交已分开；每帧槽预分配每物理组一个 primary，串行录制后按组序一个 VkSubmitInfo、一次 vkQueueSubmit。保留获取等待、组间 WAW、最终 present 转换、帧槽复用及全部命令引用解除后的旧代清理。后组失败不部分提交，成功提交后才推进状态。
 

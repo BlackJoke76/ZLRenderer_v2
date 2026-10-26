@@ -59,3 +59,7 @@ ASan仅给验证进程PATH追加MSVC ASan DLL目录；未修改系统环境。�
 ## 交付范围
 
 严格change校验与git diff --check通过。README包含CPU-only命令、调用与失败读取示例；ARCHITECTURE记录锁/句柄/关闭边界；ROADMAP区分组录制准备、CPU执行器和未来并行录制接入。此change保持活动，未同步主规格或归档，也未改变prepare-render-group-recording状态。提交与推送回执在交付后补充。
+
+## Git回执
+
+实施提交6994f0404dbfc249d4799e8968e734980fa58fd4已推送至origin/main，git ls-remote确认远端SHA一致。15/15任务已完成；最终勾选与交接回执以独立文档提交保存。未同步主规格、未归档，其他工作区未跟踪内容保留。

@@ -1,10 +1,12 @@
 #pragma once
 #include "clearColor.h"
 #include <memory>
+#include <cstddef>
 
 struct GLFWwindow;
 struct RhiConfig {
     ClearColor clearColor{};
+    std::size_t recordingWorkerCount = 0;
 };
 class VulkanBackend;
 

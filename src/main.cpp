@@ -8,6 +8,7 @@
 #include <memory>
 #ifdef ZL_RENDERER_TESTING
 #include "vulkanTestHooks.h"
+#include "recordingTestHooks.h"
 #include <limits>
 #endif
 
@@ -48,6 +49,7 @@ int main() {
 
         RhiConfig rendererConfig;
 #ifdef ZL_RENDERER_TESTING
+        configureRecordingTest(rendererConfig);
         if (isVulkanTestCase("alternate-window") || isVulkanTestCase("alternate")) {
             rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};
         }

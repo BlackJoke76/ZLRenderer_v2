@@ -1,5 +1,13 @@
 # 实际进度
 
+2026-10-27，`record-render-groups-in-parallel` 实施技术验收通过，15/16 任务完成，Git 交付执行中。[完整验收报告](../openspec/changes/record-render-groups-in-parallel/verification.md) 对应 5 条要求、19 个场景和 6 项设计决策。RhiConfig 显式配置 0/1/多 worker，默认零内联；复用 TaskSystem 和同一 recordRenderGroup。每帧槽每 worker 独占池及预分配 primary，整批结束后校验结果、按计划组序一次提交；任务异常、缺失/重复/未完成结果均阻止半帧提交，先收敛 CPU 使用者再清理。
+
+新 build-parallel Debug/Release 各 137/137 CTest（79.24/78.77 秒），ASan Release 137/137（351.45 秒）；最终有界日志及后组控制补测三配置各 12/12。CPU-only Debug/Release 各 26/26，在禁用 Vulkan 查找、无效 GLFW 路径、无 _deps 条件下通过。/analyze 全部目标无警告；普通产品/任务库不包含测试控制。17/17 真实窗口流程通过：两配置 0/1/4 请求 worker × 单/双清屏、两配置多 worker 最小化关闭、默认产品、替代色与 ASan 多 worker 双清屏；均至少 10 秒、9 代、25 点、三轮最小化恢复、正常条件五秒内退出，资源平衡且无应用 validation/sync WARNING/ERROR。实际线程重叠用真实 primary begin/end 区间的门控、进入/退出事件及不同 worker/thread/pool 证明；逆序完成仍按计划提交，损坏证据拒绝，故障测试明确属于控制覆盖。
+
+证据在忽略目录 build-parallel*，窗口日志/PNG 在 build-parallel/window-logs-verified。最初受限环境中新旧基线都在 swapchain 创建返回 -4，正常桌面权限下通过；一次持续截图边缘黑条的失败证据保留在 window-logs，逐次将验收自身窗口置顶后通过，未改变采样点或阈值。匹配事件检查器前的两次旧二进制失败日志亦保留，详见报告。真实 RX7900XT、同族0、FIFO、format50、3图像/2帧槽；MAILBOX/分族为合成或代码覆盖。基础WSI呈现引擎完成限制、无采样绘制、MSVC无可用TSan/UBSan均明示，不宣称 GPU 并行或性能提升。
+
+本 change 未独立 verify、未同步主规格或归档；后续同步须先处理已完成但尚未同步的 prepare-render-group-recording，再处理本 change。已核实 origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main，交付前远端与基线 0f09df95f591821970cceb8b59b6f35f505b9226 一致。仅提交本 change 成果，既有 .agents/ 与两个 .gitkeep 保留；最终提交和推送状态在实际完成后补记。
+
 2026-10-27，`add-recording-task-system` 已同步主规格并归档（spec-driven）：目录为 `openspec/changes/archive/2026-10-27-add-recording-task-system/`，[完整验收与独立复核](../openspec/changes/archive/2026-10-27-add-recording-task-system/verification.md)。归档前4/4规划材料、15/15任务完成，2026-10-26独立复核0 critical/warning/suggestion。新增 `openspec/specs/cpu-task-execution/spec.md`，Purpose、6条要求和19个场景与归档delta逐项完全一致，仅转换标题与Requirements章节；其余5份主规格SHA256不变。
 
 归档6个文件（含.openspec.yaml）移动前后SHA256逐一一致，校验清单保存在忽略目录 `build-task-system-verify/archive-manifest-20261027.json`。全部6份主规格和6个归档change任务记录严格校验通过；当前只保留另一个已完成但未归档的 `prepare-render-group-recording`，未修改其记录。本轮仅同步规格、归档和更新交接/路线图，未改产品代码或重新运行构建/GPU测试；此前复核数据和工具限制仍有效。

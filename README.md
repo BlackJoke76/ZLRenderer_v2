@@ -44,9 +44,11 @@ ctest --test-dir build -C Release --output-on-failure
 
 要验证从头构建，使用新的目录（例如将以上 `build` 替换为 `build-clean`），避免依赖已有构建缓存。初始化、窗口创建或运行失败会向标准错误输出阶段和原因，并返回非零退出码。
 
-CTest 默认开启，默认图形配置包含78项既有回归和26项纯CPU任务测试，实际结果见 docs/STATUS.md。既有回归覆盖图编译、后端参数/绑定、队列与交换链选择、Vulkan初始化回滚、帧复用、超时、SUBOPTIMAL/OUT_OF_DATE、oldSwapchain替换和组录制/提交错误控制；任务测试覆盖0/1/4 worker、等待、失败汇总、关闭和100轮关键案例。CPU-only配置只生成任务模块和26项任务测试，不依赖图形SDK、GLFW、驱动或桌面。实际呈现测试仍需图形前置条件；参数绑定测试使用host-only句柄，不提交伪造对象。故障注入只在独立测试目标编译，正常库与应用没有注入开关。关闭测试可用 `-DBUILD_TESTING=OFF`。
+CTest 默认开启，默认图形配置包含78项既有回归、26项纯CPU任务测试和33项并行录制/证据测试，实际结果见 docs/STATUS.md。既有回归覆盖图编译、后端参数/绑定、队列与交换链选择、Vulkan初始化回滚、帧复用、超时、SUBOPTIMAL/OUT_OF_DATE、oldSwapchain替换和组录制/提交错误控制；任务测试覆盖0/1/4 worker、等待、失败汇总、关闭和100轮关键案例。CPU-only配置只生成任务模块和26项任务测试，不依赖图形SDK、GLFW、驱动或桌面。实际呈现测试仍需图形前置条件；参数绑定测试使用host-only句柄，不提交伪造对象。故障注入只在独立测试目标编译，正常库与应用没有注入开关。关闭测试可用 `-DBUILD_TESTING=OFF`。
 
 清屏颜色在 `src/main.cpp` 中初始化 `RhiConfig rendererConfig` 时指定，例如 `rendererConfig.clearColor = {0.2f, 0.05f, 0.1f, 1.0f};`，重新编译后生效；分量必须有限且位于 [0,1]。颜色编码依据实际所选格式，配置无需修改帧同步代码。
+
+同一配置的 `recordingWorkerCount` 默认 0，表示在协调线程内联录制；设为 1 或更大值启用固定 worker。实际 worker 数为请求值与计划组数的较小值，日志同时报告两者。每帧槽、每 worker 独占命令池，并为每组预分配一个 primary；所有模式共用组录制函数，整批结束后按计划顺序一次提交。当前产品单组清屏无可并行组，默认不创建线程；不承诺清屏并行会加速。TaskSystem 的 CPU-only 构建隔离保持不变。
 
 使用 Windows PowerShell（下列 `powershell` 命令）运行可重复的可见窗口验收：每次至少持续 10 秒；逐次匹配实际客户区与 framebuffer/extent 日志后截图和25点内部/边缘颜色采样、反复/快速缩放收敛、三次最小化恢复、系统关闭与资源计数。
 
@@ -70,12 +72,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -
 ctest --test-dir build -C Debug -R '^graph-' --output-on-failure
 ```
 
-真实双清屏验收使用测试目标的另一份图声明，依次把同一交换链图像清为 A、B，两个组共用同一 command buffer、framebuffer 和 render pass，图生成组间 WAW，最后只 submit 一次并呈现 B（默认深蓝色）：
+真实双清屏验收使用测试目标的另一份图声明，依次把同一交换链图像清为 A、B，两个组各有独立 primary，共用 framebuffer 和 render pass，图生成组间 WAW，最后只 submit 一次并呈现 B（默认深蓝色）：
 
 ```powershell
 ctest --test-dir build -C Debug -R '^presentation-graph-' --output-on-failure
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verifyWindow.ps1 -executablePath .\build\Debug\vulkanLifecycleTests.exe -testCase graph-double-window -logDirectory .\build\Debug\graph-double-window-logs
 ```
+
+测试目标可添加 `-recordingWorkerCount 1` 或 `-recordingWorkerCount 4` 复验同一窗口流程；该参数只向测试程序传入配置。`ctest -R "^recording-"` 验证真实录制区间重叠、逆序完成和错误收敛。
 
 Release 将配置名替换为 Release。窗口脚本复用颜色与窗口流程，并调用 `tests/checkRenderGraph.cmake` 核对实际 barrier/组/绑定顺序；需 CMake 在 PATH 或可用的默认 VS CMake 路径。验收要同时查看计划断言、实际参数、最终 25 点 B 色和 validation/sync 原始诊断；双清屏不证明采样绘制、自动 pass 合并或任意多 pass 已在 GPU 实测。
 
@@ -134,7 +138,7 @@ cmake --build build-task-system --config Release --parallel
 ctest --test-dir build-task-system -C Release --output-on-failure
 ```
 
-库为 `build-task-system/<配置>/taskSystem.lib`，测试为同目录的 `taskSystemTests.exe`；`BUILD_TESTING=OFF` 只构建库。`ZL_BUILD_RENDERER` 默认ON，保留原图形配置和全部现有测试。CPU模块未接入presenter，当前物理执行组仍串行录制。
+库为 `build-task-system/<配置>/taskSystem.lib`，测试为同目录的 `taskSystemTests.exe`；`BUILD_TESTING=OFF` 只构建库。`ZL_BUILD_RENDERER` 默认ON，保留原图形配置和全部现有测试。Presenter 已复用此模块录制物理执行组；默认零 worker 内联，显式正数配置使用固定 worker，CPU-only 构建仍保持独立。
 
 一个协调线程构造 `TaskSystem(workerCount)`、串行调用 `submitBatch(tasks)` 和 `shutdown()`；有效批次句柄可在多个外部线程上 `wait()`。回调签名为 `void(std::size_t workerIndex)`，借用对象由调用者保证在本批完成前存活；回调不得重入同执行器的提交、等待、关闭或销毁。零worker在提交线程按输入顺序执行并在submitBatch返回前完成；正数使用固定工作线程，worker索引稳定，等待者不帮助执行。
 

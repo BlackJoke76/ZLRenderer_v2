@@ -135,6 +135,36 @@ void recording() {
     expectFailure([&] { prepareGraphFrame(graph.compile(), bindings, context, 0, renderPasses); }, "sampled drawing");
     expectFailure([&] { validateGraphRecordingSupport(graph.compile()); }, "sampled drawing");
     expectFailure([&] { validateGraphRecordingSupport(CompiledRenderGraph{}); }, "executable plan");
+    std::vector<RecordedRenderGroup> results(2);
+    for (std::size_t groupIndex = 0; groupIndex < results.size(); ++groupIndex) {
+        auto& result = results[groupIndex];
+        result.frameSlot = prepared.frameSlot;
+        result.generation = prepared.generation;
+        result.acquiredImageIndex = prepared.acquiredImageIndex;
+        result.planVersion = prepared.planVersion;
+        result.groupIndex = groupIndex;
+        result.commandPoolHandle = reinterpret_cast<VkCommandPool>(std::uintptr_t{50 + groupIndex});
+        result.commandBufferHandle = reinterpret_cast<VkCommandBuffer>(std::uintptr_t{100 + groupIndex});
+        result.complete = true;
+    }
+    const auto ordered = collectRecordedGroupCommands(prepared, results);
+    std::swap(results[0], results[1]);
+    require(collectRecordedGroupCommands(prepared, results) == ordered, "Result arrival changed plan order");
+    for (int damage = 0; damage < 10; ++damage) {
+        auto broken = results;
+        if (damage == 0) { broken.pop_back(); }
+        if (damage == 1) { broken[0].groupIndex = broken[1].groupIndex; }
+        if (damage == 2) { broken[0].commandBufferHandle = VK_NULL_HANDLE; }
+        if (damage == 3) { broken[0].commandBufferHandle = broken[1].commandBufferHandle; }
+        if (damage == 4) { broken[0].complete = false; }
+        if (damage == 5) { ++broken[0].generation; }
+        if (damage == 6) { ++broken[0].frameSlot; }
+        if (damage == 7) { ++broken[0].planVersion; }
+        if (damage == 8) { ++broken[0].acquiredImageIndex; }
+        if (damage == 9) { broken[0].commandPoolHandle = VK_NULL_HANDLE; }
+        expectFailure([&] { collectRecordedGroupCommands(prepared, broken); }, "record results");
+    }
+
 }
 }
 

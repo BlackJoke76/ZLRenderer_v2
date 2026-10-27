@@ -4,6 +4,7 @@
 #include <stdexcept>
 #ifdef ZL_RENDERER_TESTING
 #include "vulkanTestHooks.h"
+#include "recordingTestHooks.h"
 #endif
 
 class VulkanBackend {
@@ -24,11 +25,14 @@ void Rhi::initialize(GLFWwindow* windowHandle, const RhiConfig& config) {
     const auto colorTargetHandle = backend->graph.importImage({"swapchainColor", ExternalImageRole::swapchainColor});
     std::vector<GraphImageHandle> sampledImages;
 #ifdef ZL_RENDERER_TESTING
+    for (std::size_t groupIndex = 1; groupIndex < getRecordingTestGroupCount(); ++groupIndex) {
+        backend->graph.addRasterPass({"clearExtra" + std::to_string(groupIndex), {colorTargetHandle}, {}});
+    }
     if (isVulkanTestCase("graph-unsupported")) {
         sampledImages.push_back(backend->graph.importImage({"unsupportedSample", ExternalImageRole::color,
                                                           ImageUse::fragmentSampledRead, true}));
     }
-    if (isVulkanTestCase("graph-double") || isVulkanTestCase("graph-double-window") || isVulkanTestCase("graph-group") || isVulkanTestCase("group-begin") || isVulkanTestCase("group-body") || isVulkanTestCase("group-end") || isVulkanTestCase("double-rebuild") || isVulkanTestCase("submit-later") || isVulkanTestCase("double-rebuild-failure")) {
+    if (getRecordingTestGroupCount() == 0 && (isVulkanTestCase("graph-double") || isVulkanTestCase("graph-double-window") || isVulkanTestCase("graph-group") || isVulkanTestCase("group-begin") || isVulkanTestCase("group-body") || isVulkanTestCase("group-end") || isVulkanTestCase("double-rebuild") || isVulkanTestCase("submit-later") || isVulkanTestCase("double-rebuild-failure"))) {
         backend->graph.addRasterPass({"clearA", {colorTargetHandle, AttachmentLoad::clear, AttachmentStore::store,
                                                 {0.20f, 0.05f, 0.10f, 1.0f}}, {}});
     }
@@ -38,7 +42,7 @@ void Rhi::initialize(GLFWwindow* windowHandle, const RhiConfig& config) {
     backend->graph.setPresentTarget(colorTargetHandle);
     backend->compiledGraph = backend->graph.compile();
     backend->context.initialize(windowHandle);
-    backend->presenter.initialize(windowHandle, backend->context.getDeviceView(), backend->compiledGraph);
+    backend->presenter.initialize(windowHandle, backend->context.getDeviceView(), backend->compiledGraph, config.recordingWorkerCount);
 }
 
 void Rhi::renderFrame() {

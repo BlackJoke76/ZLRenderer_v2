@@ -2,6 +2,7 @@
 #include "rhi.h"
 #include "vulkanContext.h"
 #include "vulkanRenderGraph.h"
+#include "taskSystem.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -15,13 +16,17 @@ public:
     ~VulkanPresenter() noexcept;
     VulkanPresenter(const VulkanPresenter&) = delete;
     VulkanPresenter& operator=(const VulkanPresenter&) = delete;
-    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, const CompiledRenderGraph& plan);
+    void initialize(GLFWwindow* windowHandle, const VulkanDeviceView& deviceView, const CompiledRenderGraph& plan,
+                    std::size_t recordingWorkerCount = 0);
     void renderFrame();
     void shutdown();
 private:
-    struct FrameResources {
+    struct WorkerCommandResources {
         VkCommandPool commandPoolHandle = VK_NULL_HANDLE;
         std::vector<VkCommandBuffer> groupCommandBufferHandles;
+    };
+    struct FrameResources {
+        std::vector<WorkerCommandResources> workerCommands;
         VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
         VkFence submissionFence = VK_NULL_HANDLE;
     };
@@ -57,9 +62,14 @@ private:
     std::unique_ptr<SwapchainResources> createSwapchain(const SwapchainConfiguration& configuration,
         VkExtent2D framebufferExtent, VkSwapchainKHR oldSwapchainHandle);
     void createRenderPass(SwapchainResources& resources, VkFormat colorFormat);
-    std::string recordGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared, bool captureTrace);
+    struct RecordedGraphFrame {
+        std::vector<VkCommandBuffer> orderedCommands;
+        std::string trace;
+    };
+    RecordedGraphFrame recordGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared, bool captureTrace);
     static std::string recordRenderGroup(const PreparedRenderGroup& group, VkCommandBuffer commandBufferHandle, bool captureTrace);
-    std::string submitGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared, VkSemaphore renderFinishedSemaphore, bool captureTrace);
+    std::string submitGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared,
+        std::span<const VkCommandBuffer> orderedCommands, VkSemaphore renderFinishedSemaphore, bool captureTrace);
     bool rebuildSwapchain();
     VkResult waitForSubmissions() noexcept;
     static void releaseSwapchain(SwapchainResources& resources) noexcept;
@@ -67,6 +77,8 @@ private:
     GLFWwindow* windowHandle = nullptr; // Borrowed; outlives this presenter.
     VulkanDeviceView deviceView{};
     const CompiledRenderGraph* graphPlan = nullptr; // Backend-owned; outlives this presenter.
+    std::unique_ptr<TaskSystem> recordingTasks;
+    std::size_t recordingWorkerCount = 0;
     std::array<FrameResources, 2> frames{};
     std::unique_ptr<SwapchainResources> swapchainResources;
     std::uint32_t frameIndex = 0;

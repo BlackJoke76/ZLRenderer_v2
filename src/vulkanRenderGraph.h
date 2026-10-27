@@ -65,3 +65,19 @@ struct PreparedGraphFrame {
 };
 PreparedGraphFrame prepareGraphFrame(const CompiledRenderGraph& plan, std::span<const GraphImageBinding> bindings,
     const SwapchainBindingContext& context, std::uint32_t frameSlot, std::span<const VkRenderPass> renderPassHandles);
+
+struct RecordedRenderGroup {
+    std::uint32_t frameSlot = 0;
+    std::uint32_t generation = 0;
+    std::uint32_t acquiredImageIndex = 0;
+    std::uint64_t planVersion = 0;
+    std::size_t groupIndex = 0;
+    std::size_t workerIndex = 0;
+    VkCommandPool commandPoolHandle = VK_NULL_HANDLE;
+    VkCommandBuffer commandBufferHandle = VK_NULL_HANDLE;
+    bool complete = false;
+    std::string trace;
+    std::string threadIdentity;
+};
+std::vector<VkCommandBuffer> collectRecordedGroupCommands(const PreparedGraphFrame& prepared,
+    std::span<const RecordedRenderGroup> recordedGroups);

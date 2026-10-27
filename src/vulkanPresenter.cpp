@@ -8,8 +8,10 @@
 #include <optional>
 #include <limits>
 #include <sstream>
+#include <algorithm>
 #ifdef ZL_RENDERER_TESTING
 #include "vulkanTestHooks.h"
+#include "recordingTestHooks.h"
 #endif
 
 namespace {
@@ -45,11 +47,14 @@ VulkanPresenter::~VulkanPresenter() noexcept {
 }
 
 void VulkanPresenter::initialize(GLFWwindow* requestedWindowHandle, const VulkanDeviceView& requestedDeviceView,
-                                 const CompiledRenderGraph& requestedPlan) {
+                                 const CompiledRenderGraph& requestedPlan, std::size_t requestedWorkerCount) {
     windowHandle = requestedWindowHandle;
     deviceView = requestedDeviceView;
     graphPlan = &requestedPlan;
     validateGraphRecordingSupport(*graphPlan);
+    recordingWorkerCount = std::min(requestedWorkerCount, graphPlan->getGroups().size());
+    recordingTasks = std::make_unique<TaskSystem>(recordingWorkerCount);
+    std::printf("Recording workers requested=%zu actual=%zu\n", requestedWorkerCount, recordingWorkerCount);
     createFrameResources();
     const auto state = readWindowState("initialize");
     if (!state.closing && !state.iconified && state.framebufferExtent.width > 0 && state.framebufferExtent.height > 0) {
@@ -88,29 +93,48 @@ void VulkanPresenter::setPresentationPaused(bool paused, const char* reason) {
 
 void VulkanPresenter::createFrameResources() {
     for (auto& frame : frames) {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.queueFamilyIndex = deviceView.queueFamilies.graphicsFamilyIndex;
-        VkCommandPool createdPoolHandle = VK_NULL_HANDLE;
-        checkResult(vkCreateCommandPool(deviceView.deviceHandle, &poolInfo, nullptr, &createdPoolHandle),
-                    "frames: vkCreateCommandPool");
-        frame.commandPoolHandle = createdPoolHandle;
-        std::puts("Created command pool");
-        VkCommandBufferAllocateInfo allocationInfo{};
-        allocationInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocationInfo.commandPool = frame.commandPoolHandle;
-        allocationInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        if (graphPlan->getGroups().size() > std::numeric_limits<std::uint32_t>::max()) {
-            throw std::runtime_error("frames: physical group count overflow.");
+        const auto laneCount = std::max(std::size_t{1}, recordingWorkerCount);
+        const auto groupCount = graphPlan->getGroups().size();
+        if (groupCount == 0 || groupCount > std::numeric_limits<std::uint32_t>::max() ||
+            laneCount > std::numeric_limits<std::size_t>::max() / groupCount / frames.size()) {
+            throw std::runtime_error("frames: command resource count overflow.");
         }
-        allocationInfo.commandBufferCount = static_cast<std::uint32_t>(graphPlan->getGroups().size());
-        frame.groupCommandBufferHandles.resize(allocationInfo.commandBufferCount, VK_NULL_HANDLE);
+        frame.workerCommands.resize(laneCount);
+        for (std::size_t workerIndex = 0; workerIndex < laneCount; ++workerIndex) {
+            auto& worker = frame.workerCommands[workerIndex];
+            VkCommandPoolCreateInfo poolInfo{};
+            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            poolInfo.queueFamilyIndex = deviceView.queueFamilies.graphicsFamilyIndex;
+            VkCommandPool createdPoolHandle = VK_NULL_HANDLE;
+            checkResult(vkCreateCommandPool(deviceView.deviceHandle, &poolInfo, nullptr, &createdPoolHandle),
+                        "frames: vkCreateCommandPool");
+            worker.commandPoolHandle = createdPoolHandle;
+            std::puts("Created command pool");
+            VkCommandBufferAllocateInfo allocationInfo{};
+            allocationInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            allocationInfo.commandPool = worker.commandPoolHandle;
+            allocationInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocationInfo.commandBufferCount = static_cast<std::uint32_t>(graphPlan->getGroups().size());
+            worker.groupCommandBufferHandles.resize(allocationInfo.commandBufferCount, VK_NULL_HANDLE);
 #ifdef ZL_RENDERER_TESTING
-        runVulkanTestCheckpoint("primary-allocation", VK_NULL_HANDLE);
+            runVulkanTestCheckpoint("primary-allocation", VK_NULL_HANDLE);
+            if (workerIndex == 1) { runVulkanTestCheckpoint("worker-primary-later", VK_NULL_HANDLE); }
 #endif
-        checkResult(vkAllocateCommandBuffers(deviceView.deviceHandle, &allocationInfo, frame.groupCommandBufferHandles.data()),
-                    "frames: vkAllocateCommandBuffers");
-        std::printf("Allocated group primaries count=%u\n", allocationInfo.commandBufferCount);
+            checkResult(vkAllocateCommandBuffers(deviceView.deviceHandle, &allocationInfo, worker.groupCommandBufferHandles.data()),
+                        "frames: vkAllocateCommandBuffers");
+            std::printf("Allocated group primaries count=%u\n", allocationInfo.commandBufferCount);
+#ifdef ZL_RENDERER_TESTING
+            for (std::size_t groupIndex = 0; groupIndex < worker.groupCommandBufferHandles.size(); ++groupIndex) {
+                std::printf("Command resource slot=%zu worker=%zu group=%zu pool=%llu command=%llu\n",
+                    static_cast<std::size_t>(&frame - frames.data()), workerIndex, groupIndex,
+                    static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(worker.commandPoolHandle)),
+                    static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(worker.groupCommandBufferHandles[groupIndex])));
+            }
+            std::printf("Command lane slot=%zu worker=%zu pool=%llu\n", static_cast<std::size_t>(&frame - frames.data()), workerIndex,
+                        static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(worker.commandPoolHandle)));
+            runVulkanTestCheckpoint(workerIndex == 1 ? "worker-pool-later" : "worker-pool", VK_NULL_HANDLE);
+#endif
+        }
         frame.imageAvailableSemaphore = createSemaphore(deviceView.deviceHandle);
         std::puts("Created acquire semaphore");
         VkFenceCreateInfo fenceInfo{};
@@ -259,21 +283,81 @@ std::unique_ptr<VulkanPresenter::SwapchainResources> VulkanPresenter::createSwap
     return resources;
 }
 
-std::string VulkanPresenter::recordGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared,
-                                             bool captureTrace) {
-    checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "record: vkResetCommandPool");
+VulkanPresenter::RecordedGraphFrame VulkanPresenter::recordGraphFrame(const FrameResources& frame,
+    const PreparedGraphFrame& prepared, bool captureTrace) {
+    std::vector<RecordedRenderGroup> recordedGroups(prepared.groups.size());
+    std::vector<TaskSystem::Task> tasks;
+    tasks.reserve(prepared.groups.size());
+#ifdef ZL_RENDERER_TESTING
+    beginRecordingTestBatch(submittedFrames, prepared.groups.size(), recordingWorkerCount);
+#endif
+    for (std::size_t groupIndex = 0; groupIndex < prepared.groups.size(); ++groupIndex) {
+        tasks.emplace_back([&, groupIndex](std::size_t workerIndex) {
+            const auto& worker = frame.workerCommands.at(workerIndex);
+            auto& result = recordedGroups[groupIndex];
+            result.frameSlot = prepared.frameSlot;
+            result.generation = prepared.generation;
+            result.acquiredImageIndex = prepared.acquiredImageIndex;
+            result.planVersion = prepared.planVersion;
+            result.groupIndex = groupIndex;
+            result.workerIndex = workerIndex;
+            result.commandPoolHandle = worker.commandPoolHandle;
+            result.commandBufferHandle = worker.groupCommandBufferHandles.at(groupIndex);
+            if (captureTrace) {
+                std::ostringstream threadName;
+                threadName << std::this_thread::get_id();
+                result.threadIdentity = threadName.str();
+            }
+            result.trace = recordRenderGroup(prepared.groups[groupIndex], result.commandBufferHandle, captureTrace);
+            result.complete = true;
+        });
+    }
+    for (const auto& worker : frame.workerCommands) {
+#ifdef ZL_RENDERER_TESTING
+        if (vkGetFenceStatus(deviceView.deviceHandle, frame.submissionFence) != VK_SUCCESS) {
+            throw std::runtime_error("record reset before slot GPU completion");
+        }
+#endif
+        checkResult(vkResetCommandPool(deviceView.deviceHandle, worker.commandPoolHandle, 0), "record: vkResetCommandPool");
+    }
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("record", VK_NULL_HANDLE);
 #endif
-    std::string trace;
-    for (std::size_t groupIndex = 0; groupIndex < prepared.groups.size(); ++groupIndex) {
-        try {
-            trace += recordRenderGroup(prepared.groups[groupIndex], frame.groupCommandBufferHandles.at(groupIndex), captureTrace);
-        } catch (const std::exception& error) {
-            throw std::runtime_error("record group=" + std::to_string(groupIndex) + ": " + error.what());
+    // Nothing between accepting this batch and waiting can throw or invalidate its borrowed storage.
+    const auto batch = recordingTasks->submitBatch(std::move(tasks));
+    const auto& batchResult = batch.wait();
+#ifdef ZL_RENDERER_TESTING
+    finishRecordingTestBatch();
+    if (captureTrace) {
+        for (const auto& result : recordedGroups) {
+            if (result.complete) { std::printf("Recorded physical group=%zu\n", result.groupIndex); }
         }
     }
-    return trace;
+#endif
+    if (batchResult.failedTaskCount) {
+        std::string failures;
+        for (std::size_t groupIndex = 0; groupIndex < batchResult.taskExceptions.size(); ++groupIndex) {
+            if (!batchResult.taskExceptions[groupIndex]) { continue; }
+            failures += " record group=" + std::to_string(groupIndex) + ": ";
+            try { std::rethrow_exception(batchResult.taskExceptions[groupIndex]); }
+            catch (const std::exception& error) { failures += error.what(); }
+            catch (...) { failures += "non-standard exception"; }
+        }
+        throw std::runtime_error(failures);
+    }
+    RecordedGraphFrame recordedFrame;
+    recordedFrame.orderedCommands = collectRecordedGroupCommands(prepared, recordedGroups);
+    for (const auto& result : recordedGroups) {
+        if (captureTrace) {
+            std::ostringstream identity;
+            identity << "Graph worker group=" << result.groupIndex << " worker=" << result.workerIndex
+                << " thread=" << result.threadIdentity << " pool=" << reinterpret_cast<std::uintptr_t>(result.commandPoolHandle)
+                << " command=" << reinterpret_cast<std::uintptr_t>(result.commandBufferHandle) << '\n';
+            recordedFrame.trace += identity.str();
+        }
+        recordedFrame.trace += result.trace;
+    }
+    return recordedFrame;
 }
 
 std::string VulkanPresenter::recordRenderGroup(const PreparedRenderGroup& group, VkCommandBuffer commandBufferHandle, bool captureTrace) {
@@ -301,9 +385,12 @@ std::string VulkanPresenter::recordRenderGroup(const PreparedRenderGroup& group,
         }
     };
 #ifdef ZL_RENDERER_TESTING
-    if (groupIndex == 1) { runVulkanTestCheckpoint("group-begin", VK_NULL_HANDLE); }
+    runRecordingGroupCheckpoint("group-begin", groupIndex);
 #endif
     checkResult(vkBeginCommandBuffer(commandBufferHandle, &beginInfo), "record: vkBeginCommandBuffer");
+#ifdef ZL_RENDERER_TESTING
+    RecordingTestScope recordingScope(groupIndex);
+#endif
     if (trace) { *trace << "Graph primary begin group=" << groupIndex << " command=" << reinterpret_cast<std::uintptr_t>(commandBufferHandle) << '\n'; }
     const auto& attachment = group.attachment;
     const auto& binding = group.binding;
@@ -335,34 +422,35 @@ std::string VulkanPresenter::recordRenderGroup(const PreparedRenderGroup& group,
         // This change's pass body is empty: attachment load/store performs the clear/preserve work.
     }
 #ifdef ZL_RENDERER_TESTING
-    if (groupIndex == 1) { runVulkanTestCheckpoint("group-body", VK_NULL_HANDLE); }
+    runRecordingGroupCheckpoint("group-body", groupIndex);
 #endif
     vkCmdEndRenderPass(commandBufferHandle);
 #ifdef ZL_RENDERER_TESTING
-    if (groupIndex == 0) { runVulkanTestCheckpoint("graph-group", VK_NULL_HANDLE); }
+    runRecordingGroupCheckpoint("graph-group", groupIndex);
 #endif
     emitTransitions(commandBufferHandle, groupIndex, "after", group.afterBarriers);
 #ifdef ZL_RENDERER_TESTING
-    if (groupIndex == 1) { runVulkanTestCheckpoint("group-end", VK_NULL_HANDLE); }
+    runRecordingGroupCheckpoint("group-end", groupIndex);
+    beforeRecordingTestEnd(groupIndex);
 #endif
     checkResult(vkEndCommandBuffer(commandBufferHandle), "record: vkEndCommandBuffer");
     if (trace) { *trace << "Graph primary end group=" << groupIndex << " command=" << reinterpret_cast<std::uintptr_t>(commandBufferHandle) << '\n'; }
 #ifdef ZL_RENDERER_TESTING
-    std::printf("Recorded physical group=%zu\n", groupIndex);
+    recordingScope.complete();
 #endif
     return trace ? trace->str() : std::string{};
 }
 
 std::string VulkanPresenter::submitGraphFrame(const FrameResources& frame, const PreparedGraphFrame& prepared,
-    VkSemaphore renderFinishedSemaphore, bool captureTrace) {
+    std::span<const VkCommandBuffer> orderedCommands, VkSemaphore renderFinishedSemaphore, bool captureTrace) {
     const auto waitStage = prepared.acquireWaitStage;
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &frame.imageAvailableSemaphore;
     submitInfo.pWaitDstStageMask = &waitStage;
-    submitInfo.commandBufferCount = static_cast<std::uint32_t>(frame.groupCommandBufferHandles.size());
-    submitInfo.pCommandBuffers = frame.groupCommandBufferHandles.data();
+    submitInfo.commandBufferCount = static_cast<std::uint32_t>(orderedCommands.size());
+    submitInfo.pCommandBuffers = orderedCommands.data();
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
     std::ostringstream trace;
@@ -377,7 +465,7 @@ std::string VulkanPresenter::submitGraphFrame(const FrameResources& frame, const
     auto submitTrace = trace.str();
 #ifdef ZL_RENDERER_TESTING
     runVulkanTestCheckpoint("reset-fence", VK_NULL_HANDLE);
-    std::puts("Resetting submission fence");
+    if (captureTrace) { std::puts("Resetting submission fence"); }
 #endif
     checkResult(vkResetFences(deviceView.deviceHandle, 1, &frame.submissionFence), "submit: vkResetFences");
     VkResult submitResult;
@@ -457,8 +545,8 @@ void VulkanPresenter::renderFrame() {
     const auto prepared = prepareGraphFrame(*graphPlan, bindings,
         {swapchainGeneration, imageIndex, swapchainResources->colorFormat, swapchainResources->renderExtent},
         frameIndex, swapchainResources->renderPassHandles);
-    const auto graphTrace = recordGraphFrame(frame, prepared, captureTrace);
-    const auto submitTrace = submitGraphFrame(frame, prepared, image.renderFinishedSemaphore, captureTrace);
+    const auto recordedFrame = recordGraphFrame(frame, prepared, captureTrace);
+    const auto submitTrace = submitGraphFrame(frame, prepared, recordedFrame.orderedCommands, image.renderFinishedSemaphore, captureTrace);
     hasSubmittedWork = true;
     ++submittedFrames;
     if (reportPlan) {
@@ -483,7 +571,7 @@ void VulkanPresenter::renderFrame() {
     if (captureTrace) {
         std::printf("Graph submitted frame=%llu generation=%u version=%llu slot=%u image=%u groups=%zu submits=1 waitStage=%u\n%s",
             static_cast<unsigned long long>(submittedFrames), swapchainGeneration,
-            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size(), prepared.acquireWaitStage, graphTrace.c_str());
+            static_cast<unsigned long long>(graphPlan->getVersion()), frameIndex, imageIndex, graphPlan->getGroups().size(), prepared.acquireWaitStage, recordedFrame.trace.c_str());
         std::printf("%s", submitTrace.c_str());
         std::puts("Graph record end");
     }
@@ -493,7 +581,7 @@ void VulkanPresenter::renderFrame() {
                     reinterpret_cast<void*>(image.framebufferHandle), reinterpret_cast<void*>(swapchainResources->renderPassHandles[
                         getAttachmentVariant(graphPlan->getPasses().front().colorAttachment)]));
         std::printf("Frame submitted slot=%u image=%u command=%p acquire=%p present=%p fence=%p generation=%u\n", frameIndex, imageIndex,
-                    static_cast<void*>(frame.groupCommandBufferHandles.front()), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
+                    static_cast<void*>(recordedFrame.orderedCommands.front()), reinterpret_cast<void*>(frame.imageAvailableSemaphore),
                     reinterpret_cast<void*>(image.renderFinishedSemaphore), reinterpret_cast<void*>(frame.submissionFence), swapchainGeneration);
     }
 #endif
@@ -546,7 +634,13 @@ bool VulkanPresenter::rebuildSwapchain() {
     std::puts("Rebuilding swapchain");
     checkResult(waitForSubmissions(), "rebuild: vkDeviceWaitIdle");
     for (const auto& frame : frames) {
-        checkResult(vkResetCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, 0), "rebuild: vkResetCommandPool");
+        for (const auto& worker : frame.workerCommands) {
+            checkResult(vkResetCommandPool(deviceView.deviceHandle, worker.commandPoolHandle, 0), "rebuild: vkResetCommandPool");
+#ifdef ZL_RENDERER_TESTING
+            std::printf("Rebuild pool reset slot=%zu worker=%zu\n", static_cast<std::size_t>(&frame - frames.data()),
+                        static_cast<std::size_t>(&worker - frame.workerCommands.data()));
+#endif
+        }
     }
     if (swapchainResources && swapchainResources->retired) {
         throw std::runtime_error("rebuild: cannot replace a retired swapchain.");
@@ -631,12 +725,15 @@ void VulkanPresenter::releaseSwapchain(SwapchainResources& resources) noexcept {
 
 void VulkanPresenter::releaseResources() noexcept {
     for (auto& frame : frames) {
-        if (frame.commandPoolHandle) {
-            vkDestroyCommandPool(deviceView.deviceHandle, frame.commandPoolHandle, nullptr);
-            frame.commandPoolHandle = VK_NULL_HANDLE;
-            frame.groupCommandBufferHandles.clear();
-            std::puts("Released command pool");
+        for (auto& worker : frame.workerCommands) {
+            if (worker.commandPoolHandle) {
+                vkDestroyCommandPool(deviceView.deviceHandle, worker.commandPoolHandle, nullptr);
+                worker.commandPoolHandle = VK_NULL_HANDLE;
+                worker.groupCommandBufferHandles.clear();
+                std::puts("Released command pool");
+            }
         }
+        frame.workerCommands.clear();
     }
     swapchainResources.reset();
     for (auto& frame : frames) {
@@ -654,7 +751,15 @@ void VulkanPresenter::releaseResources() noexcept {
 }
 
 void VulkanPresenter::shutdown() {
+    if (recordingTasks) {
+        recordingTasks->shutdown();
+        recordingTasks.reset();
+        std::puts("Recording workers drained and joined");
+    }
     if (!deviceView.deviceHandle) { return; }
+#ifdef ZL_RENDERER_TESTING
+    verifyRecordingWorkersStopped();
+#endif
     auto waitResult = waitForSubmissions();
 #ifdef ZL_RENDERER_TESTING
     if (isVulkanTestCase("wait-failure") && submittedFrames > 0 && waitResult == VK_SUCCESS) {

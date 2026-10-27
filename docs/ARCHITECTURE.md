@@ -8,15 +8,15 @@
 
 `vulkanRenderGraph.h/.cpp` 统一映射用途和验证局部绑定。颜色附件写/读写对应 COLOR_ATTACHMENT_OUTPUT 与颜色 WRITE/READ，fragment 采样对应 FRAGMENT_SHADER/SHADER_READ；采样只完成 CPU/参数验证，当前录制入口明确拒绝需要采样绘制的计划。组边界通过显式 image barrier 转换，render pass 的 initial/subpass/finalLayout 都保持 COLOR_ATTACHMENT_OPTIMAL；同一转换只有一处执行。Render pass 按实际使用的 Clear/Load 与 Store/Discard 组合缓存（最多四种），同格式 framebuffer 复用兼容 render pass，不逐帧创建。当前没有自动合并算法，未来合并必须保留组内内容语义并重新降低同步。
 
-VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开；计划只有逻辑引用。Presenter acquire 后构造当前代局部图像绑定，检查缺失、过期、格式/extent 不符及多个逻辑图像绑定同一实际图像；不支持别名。成功 acquire 后由 prepareGraphFrame 校验并解析全部组，PreparedGraphFrame/PreparedRenderGroup 只保存本帧有效的值与借用句柄，不保存指向可移动结构的原生指针、不跨重建保存附件。每个帧槽 pool 预分配固定计划组数的 primary 数组，等待该槽完成后 reset pool 一次；recordRenderGroup 仅消费准备结果，每个完整组独立 begin/end，包含组前 barrier、完整 render pass 与组后 barrier。submitGraphFrame 在全部组录制成功后用一个 VkSubmitInfo 按组序一次 vkQueueSubmit，统一等待 acquire、signal 该图像 present semaphore 并关联一个槽 fence。当前明确只支持一 pass 一组，不自动合并。测试目标的双清屏仅增加一条附件声明，与生产共用编译、映射和录制。
+VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开；计划只有逻辑引用。Presenter acquire 后构造当前代局部图像绑定，检查缺失、过期、格式/extent 不符及多个逻辑图像绑定同一实际图像；不支持别名。成功 acquire 后由 prepareGraphFrame 校验并解析全部组，PreparedGraphFrame/PreparedRenderGroup 只保存本帧有效的值与借用句柄，不保存指向可移动结构的原生指针、不跨重建保存附件。每帧槽的每 worker pool 预分配固定计划组数的 primary 数组，等待该槽完成且无 CPU 使用者后 reset 全部 pool；recordRenderGroup 仅消费准备结果，每个完整组独立 begin/end，包含组前 barrier、完整 render pass 与组后 barrier。submitGraphFrame 在全部组录制成功后用一个 VkSubmitInfo 按组序一次 vkQueueSubmit，统一等待 acquire、signal 该图像 present semaphore 并关联一个槽 fence。当前明确只支持一 pass 一组，不自动合并。测试目标的双清屏仅增加一条附件声明，与生产共用编译、映射和录制。
 
 正常日志每个已执行代/计划版本首次提交输出 Graph plan/resource/dependency，以及从实际 barrier/begin/submit 输入采集的有界 Graph submitted/group/barrier 记录，present 返回后单独输出 request result。记录在提交成功后才发布；稳定帧不重复完整输出。测试目标额外采集前 12 帧，记录实际 primary begin/end 与 VkSubmitInfo 的 count、按序 command 句柄；共享检查器核对完整组范围、独立句柄、真实数组和跨槽/跨重建复用，损坏记录必须拒绝。共享 checkRenderGraph.cmake 从实际参数核对顺序、绑定、WAW 和唯一呈现转换，颜色与同步 validation 作为另外两份证据，不能互相替代。
 
 ## 窗口与 Vulkan 生命周期
 
-`main.cpp` 在主线程拥有 GLFW/window，使用 `Rhi` 的初始化、清屏帧和显式关闭接口。`rhi.h` 仅暴露颜色配置和生命周期，不暴露 Vulkan 句柄。具体 VulkanBackend 依次拥有逻辑图/计划、VulkanContext 与 VulkanPresenter，presenter 在其借用的计划和 context 之前析构，窗口晚于两者释放。Presenter 用不可复制的私有 SwapchainResources 集合拥有一代交换链、render pass 变体、extent 和实际图像附件；unique_ptr 管理当前代及局部候选代，候选异常由同一释放函数清理。固定两个帧槽独立于代际资源。图内 handle 不成为全局资源注册表，没有虚拟多后端接口或渲染线程。
+`main.cpp` 在主线程拥有 GLFW/window，使用 `Rhi` 的初始化、清屏帧和显式关闭接口。`rhi.h` 仅暴露颜色、录制 worker 数配置和生命周期，不暴露 Vulkan 句柄。具体 VulkanBackend 依次拥有逻辑图/计划、VulkanContext 与 VulkanPresenter，presenter 在其借用的计划和 context 之前析构，窗口晚于两者释放。Presenter 用不可复制的私有 SwapchainResources 集合拥有一代交换链、render pass 变体、extent 和实际图像附件；unique_ptr 管理当前代及局部候选代，候选异常由同一释放函数清理。固定两个帧槽独立于代际资源。图内 handle 不成为全局资源注册表，没有虚拟多后端接口或渲染线程。
 
-初始化：GLFW → NO_API window → Rhi 配置检查与图编译 → context（instance、messenger、surface、physical/logical device、queues）→ 后端执行能力检查 → 两个帧槽 → swapchain/render pass/图像资源 → 主循环。零尺寸或最小化时延迟创建交换链；Debug/Release 均要求 validation。
+初始化：GLFW → NO_API window → Rhi 配置检查与图编译 → context（instance、messenger、surface、physical/logical device、queues）→ 后端执行能力检查 → 固定录制执行器 → 两个帧槽 → swapchain/render pass/图像资源 → 主循环。零尺寸或最小化时延迟创建交换链；Debug/Release 均要求 validation。
 
 设备选择复用 `queueSelection.cpp` 的同族优先、分族可用与去重。候选必须具有 `VK_KHR_swapchain`、当前 surface 的颜色附件 usage、兼容格式及 MAILBOX/FIFO。device 为每个族请求一个 index 0 队列，优先级 1；明确启用交换链扩展。`vulkanUtilities.h` 共用结果检查与 `VK_INCOMPLETE` 枚举重试，`swapchainSelection.cpp` 共用真实查询和纯配置选择。
 
@@ -24,7 +24,7 @@ VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开
 
 | 资源 | 所有者及归属 | 完成与销毁条件 |
 |---|---|---|
-| command pool / group primary array / acquire semaphore / submission fence | presenter，固定两个帧槽，按 frameIndex | 等待该槽 submission fence 后复位 pool 和重录；buffer 随 pool 释放 |
+| worker command pools / group primary arrays / acquire semaphore / submission fence | presenter，固定两个帧槽，按 frameIndex；命令池另按 workerIndex 独占 | 该槽 CPU/GPU 使用完成后复位全部池并重录；buffer 随所属 pool 释放 |
 | framebuffer / image view / present semaphore | presenter，按 imageIndex | 命令完成后清理 view/framebuffer；present semaphore 按再次获取图像的 acquire 同步复用 |
 | swapchain / render pass | presenter，每代交换链 | 重建、关闭停止提交并完成 GPU 工作后释放；格式变化重建 render pass |
 | swapchain image | swapchain 所有，presenter 借用 | 不调用 vkDestroyImage |
@@ -34,7 +34,7 @@ VulkanBackend 持有图和不可变计划，图身份与每次编译版本分开
 
 默认线性清屏色为 `(0.05,0.10,0.20,1)`，通过 main 中 RhiConfig 改动；共用 clearColor.h 的检查拒绝非有限或 [0,1] 外分量。生产图声明单个颜色附件 CLEAR/STORE；显式获取边界 UNDEFINED→COLOR_ATTACHMENT_OPTIMAL，render pass 内保持该布局，最后显式转为 PRESENT_SRC_KHR。两次清屏之间的 WAW barrier 保持颜色附件布局，不重新退回 UNDEFINED。begin/end 覆盖整个 extent；没有 shader、pipeline 或 draw。
 
-正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → 验证图绑定 → 准备全部组输入后reset该槽pool，每组独立primary按计划发出组前 barrier、录制对应 framebuffer 并发出组后 barrier → 提交前reset fence → 单次 submit 等待该槽acquire信号（阶段来自图的首次实际使用，当前为 COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。显式边界同步覆盖颜色写入和布局转换。只在submit成功后推进frameIndex/提交计数并发布图执行记录。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
+正常帧：处理事件 → 有界等待 frame fence → 有界 acquire 得到 imageIndex → 验证图绑定 → 准备全部组输入后 reset 该槽全部 worker pool，由共享函数内联/worker 录制各组独立 primary 并等待全批；组内包含计划的 before barrier、framebuffer 渲染和 after barrier，按组序收集完整结果 → 提交前reset fence → 单次 submit 等待该槽acquire信号（阶段来自图的首次实际使用，当前为 COLOR_ATTACHMENT_OUTPUT）、signal该图像present信号并关联fence → present等待该图像信号。显式边界同步覆盖颜色写入和布局转换。只在submit成功后推进frameIndex/提交计数并发布图执行记录。提交fence不能证明present等待已完成；3张图像和2个帧槽不能混用索引。
 
 TIMEOUT/NOT_READY 跳帧；acquire OUT_OF_DATE 不reset fence，下次重建。成功获取的 SUBOPTIMAL 正常消费 acquire 信号、提交/呈现后再重建。present OUT_OF_DATE/SUBOPTIMAL 触发重建。录制/submit 失败终止正常循环；不会等待未提交的 fence。surface/device 丢失及其他不可恢复错误明确非零退出，不无限重试。
 
@@ -44,7 +44,7 @@ TIMEOUT/NOT_READY 跳帧；acquire OUT_OF_DATE 不reset fence，下次重建。�
 
 传非空 oldSwapchain 的创建调用使旧链退役，即使新链创建失败也不能再从旧链 acquire 或再次把它作为未退役前代传入。本实现创建或候选附件失败即停止正常循环，候选 RAII 清理其已创建对象，关闭路径清理旧代；不回滚到旧链继续渲染。最多短暂拥有旧代与一个候选代，render pass 逐代重建，全部图像资源按新链实际图像数量配置。
 
-关闭：完成真实已提交 GPU 工作 → 释放 command pools → framebuffer → views → render pass → present semaphores → swapchain → acquire semaphores/fences → device → surface → messenger → instance → window → GLFW。正常显式 shutdown 检查等待结果；失败也释放已拥有对象并报告非零，析构 noexcept 用同一清理路径兜底。资源句柄成功创建后才保存，释放后清空。
+关闭：排空录制任务并 join worker → 完成真实已提交 GPU 工作 → 释放 command pools → framebuffer → views → render pass → present semaphores → swapchain → acquire semaphores/fences → device → surface → messenger → instance → window → GLFW。正常显式 shutdown 检查等待结果；失败也释放已拥有对象并报告非零，析构 noexcept 用同一清理路径兜底。资源句柄成功创建后才保存，释放后清空。
 
 **基础 WSI 限制：** 当前 Vulkan 1.0 路径在退出和简化重建时采用常用 WaitIdle 清理；它证明 GPU queue submissions 完成，不能严格证明 presentation engine 已结束使用 semaphore/swapchain。validation 无错误也不能证明此缺口不存在。[Khronos 说明](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html)。未启用 maintenance1/present fence；规范级呈现完成保证需另行规划扩展及兼容要求。
 
@@ -54,7 +54,7 @@ CTest 直接使用生产选择函数，逐次比较帧槽 command/acquire/fence 
 
 ## CPU任务执行器
 
-`taskSystem.h/.cpp` 是独立于图形模块的C++20库。一个协调线程负责构造、批次提交、显式关闭及销毁，多个非回调线程可以等待句柄；回调不得重入同执行器控制接口。任务之间无隐含依赖，借用对象与共享写入的同步由调用者负责。renderer未调用本模块，CPU测试不构成Vulkan并行录制或GPU同步证据。
+`taskSystem.h/.cpp` 是独立于图形模块的C++20库。一个协调线程负责构造、批次提交、显式关闭及销毁，多个非回调线程可以等待句柄；回调不得重入同执行器控制接口。任务之间无隐含依赖，借用对象与共享写入的同步由调用者负责。renderer 通过本模块调度组录制；通用 CPU 测试不构成 Vulkan 并行录制或 GPU 同步证据，后端另有真实录制门控和画面验收。
 
 生命周期：`submitBatch → 校验/预分配 → 单次发布批次 → worker领取索引 → 锁外调用及释放捕获 → 发布结果/递减剩余数 → 全批完成唤醒wait`。零worker按输入顺序在提交线程执行相同executeTask路径。正数worker索引按创建顺序固定；任务分配与完成顺序不保证。
 
@@ -63,3 +63,21 @@ CTest 直接使用生产选择函数，逐次比较帧槽 command/acquire/fence 
 队列和运行任务持有共享批次状态，句柄只拥有同一状态而不借用执行器；丢句柄不取消，保留句柄可跨执行器析构。结果在wait后只读，结果引用需要至少一个状态句柄存活。执行器在发布完成前释放其回调及捕获，但不会销毁由其他用户引用继续持有的对象。
 
 关闭：`accepting → draining → stopped`。先设closing并唤醒worker，继续执行排队任务，再join所有线程；即使队列已空仍需等待已领取工作完成。析构排空，任务失败不阻碍关闭，初始化中途失败先通知再回收已启动线程。任务必须最终终结，不支持取消、回调内等待同执行器任务或嵌套调度。
+
+## 并行执行组录制
+
+`RhiConfig::recordingWorkerCount` 经 Rhi 传入 VulkanPresenter，默认零内联；正数按固定计划组数限制。Presenter 持有 TaskSystem，协调线程只接受一个本帧批次并立即等待，不在 CPU 上跨帧并发。CPU-only 的 TaskSystem 模块不依赖图形库。
+
+| 所有者 | 对象及生命周期 |
+|---|---|
+| VulkanPresenter | 固定 worker 执行器；shutdown 先排空 join，随后等待已提交 GPU 工作 |
+| FrameResources | acquire semaphore、submission fence；同一次提交保护该槽全部 worker 的命令 |
+| 每槽 WorkerCommandResources | 独占 command pool、按固定组数预分配 primary；零 worker 有一个内联 lane |
+| PreparedGraphFrame | 本帧只读快照，借用当前代附件，存活到全部 CPU 回调完成 |
+| 每组 RecordedRenderGroup | 独立写入结果、worker/pool/primary 身份与局部 trace；end 成功后才标完整 |
+
+复位本槽全部池前已确认旧 fence 完成且没有在途 CPU 使用者。每组任务使用 `(slot, workerIndex, groupIndex)` 的 primary，任务分配可以跨帧改变，组的提交位置仍由计划固定。命令资源数量为 `2 × groupCount × max(1,min(requestedWorkers,groupCount))`，不在稳定帧分配或释放 Vulkan 命令/同步对象。
+
+录制失败仍等待全部已接受任务终结，然后汇总各组异常（包括非标准异常）；拒绝缺组、重复/空 primary、未完成或错误帧身份。在完整结果检查前不 reset fence、不提交或呈现，不推进槽/计数。submit 失败沿已有停止路径，不等待未提交 fence。重建在 CPU 无使用者、旧 GPU 工作完成后，复位所有槽所有 worker 池再释放旧附件；关闭先 join 再等 GPU，再销毁池和附件。
+
+测试专用录制门控位于真实 primary begin/end 区间，证明受控 CPU 录制区间重叠；局部 trace 按计划顺序汇总，不能从排序文本推导时间顺序。CPU 并发能力、实际 Vulkan 输入、GPU 像素和故障控制证据分别验收；不由此宣称 GPU 并行或净性能提升。

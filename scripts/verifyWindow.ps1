@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$executablePath,
     [string]$logDirectory,
     [switch]$closeWhileMinimized,
+    [ValidateRange(0,64)][int]$recordingWorkerCount = 0,
     [ValidateRange(10,60)][int]$durationSeconds = 10,
     [ValidateSet('', 'alternate-window', 'fifo-window', 'graph-double-window')][string]$testCase = ''
 )
@@ -89,6 +90,7 @@ function waitForStateSnapshot([string]$stateName, [int]$previousCount) {
     throw "New $stateName snapshot not observed."
 }
 function assertClientColor([IntPtr]$windowHandle, [string]$stage, [int[]]$expectedRgb) {
+    [void][WindowVerification]::SetWindowPos($windowHandle, [IntPtr]::new(-1), 0, 0, 0, 0, 0x13)
     [void][WindowVerification]::SetForegroundWindow($windowHandle)
     [void](waitForMatchingExtent $windowHandle $stage)
     Start-Sleep -Milliseconds 400 # Let the desktop compositor finish window restore/resize animation.
@@ -122,8 +124,10 @@ function toDisplayByte([double]$linearValue, [bool]$isSrgb) {
 # Restrict settings to this child process; do not modify registry/global layer configuration.
 $previousSyncSetting = [Environment]::GetEnvironmentVariable('VK_LAYER_VALIDATE_SYNC', 'Process')
 $previousTestCase = [Environment]::GetEnvironmentVariable('ZL_VULKAN_TEST_CASE', 'Process')
+$previousWorkerCount = [Environment]::GetEnvironmentVariable('ZL_RECORDING_WORKERS', 'Process')
 try {
     $env:VK_LAYER_VALIDATE_SYNC = '1'
+    $env:ZL_RECORDING_WORKERS = [string]$recordingWorkerCount
     if ($testCase) { $env:ZL_VULKAN_TEST_CASE = $testCase } else { Remove-Item Env:ZL_VULKAN_TEST_CASE -ErrorAction SilentlyContinue }
     # Hide the helper console; GLFW's application window is visible for the runtime acceptance test.
     $process = Start-Process -FilePath $resolvedExecutablePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
@@ -131,6 +135,7 @@ try {
 } finally {
     [Environment]::SetEnvironmentVariable('VK_LAYER_VALIDATE_SYNC', $previousSyncSetting, 'Process')
     [Environment]::SetEnvironmentVariable('ZL_VULKAN_TEST_CASE', $previousTestCase, 'Process')
+    [Environment]::SetEnvironmentVariable('ZL_RECORDING_WORKERS', $previousWorkerCount, 'Process')
 }
 try {
     $initializationObserved = $false
@@ -239,7 +244,7 @@ try {
     $expectedGraphGroups = if ($testCase -eq 'graph-double-window') { 2 } else { 1 }
     & $cmakeExecutable "-DgraphLogPath=$stdoutPath" "-DexpectedGraphGroups=$expectedGraphGroups" -P (Join-Path $PSScriptRoot '../tests/checkRenderGraph.cmake')
     if ($LASTEXITCODE -ne 0) { throw 'Graph execution log verification failed.' }
-    $verificationEvidence = @("VK_LAYER_VALIDATE_SYNC=1 supplied to child process; test executable also uses explicit layer settings when available", $frameSummary.Value, "mode=$($formatMatch.Groups[1].Value); format=$selectedFormat; closeWhileMinimized=$closeWhileMinimized; graphGroups=$expectedGraphGroups; graph/API order and bindings checked") + $script:colorEvidence
+    $verificationEvidence = @("VK_LAYER_VALIDATE_SYNC=1 supplied to child process; test executable also uses explicit layer settings when available", $frameSummary.Value, "mode=$($formatMatch.Groups[1].Value); format=$selectedFormat; closeWhileMinimized=$closeWhileMinimized; graphGroups=$expectedGraphGroups; requestedRecordingWorkers=$recordingWorkerCount; graph/API order and bindings checked") + $script:colorEvidence
     $verificationEvidence | Set-Content -LiteralPath (Join-Path $resolvedLogDirectory 'verification.txt') -Encoding UTF8
     "PASS: sustained clear color; repeated resize; 3 minimized/restore cycles or final minimized close; exit=0; balanced resources; no application validation WARNING/ERROR. $($frameSummary.Value). Logs: $resolvedLogDirectory"
 } finally {

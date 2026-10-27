@@ -2,6 +2,25 @@
 #include <algorithm>
 #include <stdexcept>
 
+std::vector<VkCommandBuffer> collectRecordedGroupCommands(const PreparedGraphFrame& prepared,
+    std::span<const RecordedRenderGroup> recordedGroups) {
+    if (recordedGroups.size() != prepared.groups.size() || recordedGroups.empty()) {
+        throw std::runtime_error("record results: missing groups.");
+    }
+    std::vector<VkCommandBuffer> orderedCommands(recordedGroups.size(), VK_NULL_HANDLE);
+    for (const auto& recorded : recordedGroups) {
+        if (!recorded.complete || !recorded.commandBufferHandle || !recorded.commandPoolHandle ||
+            recorded.groupIndex >= orderedCommands.size() || orderedCommands[recorded.groupIndex] ||
+            recorded.frameSlot != prepared.frameSlot || recorded.generation != prepared.generation ||
+            recorded.acquiredImageIndex != prepared.acquiredImageIndex || recorded.planVersion != prepared.planVersion ||
+            std::find(orderedCommands.begin(), orderedCommands.end(), recorded.commandBufferHandle) != orderedCommands.end()) {
+            throw std::runtime_error("record results: invalid or duplicate group/primary/frame identity.");
+        }
+        orderedCommands[recorded.groupIndex] = recorded.commandBufferHandle;
+    }
+    return orderedCommands;
+}
+
 VulkanImageUse mapImageUse(ImageUse use) {
     switch (use) {
     case ImageUse::undefined: return {VK_IMAGE_LAYOUT_UNDEFINED, 0, 0};

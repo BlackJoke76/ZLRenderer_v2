@@ -62,7 +62,7 @@ find_package(Vulkan REQUIRED)
 set(rendererSources src/main.cpp src/rhi.cpp src/renderGraph.cpp src/vulkanRenderGraph.cpp src/vulkanPresenter.cpp src/vulkanContext.cpp src/queueSelection.cpp src/swapchainSelection.cpp)
 add_executable(zlRenderer ${rendererSources})
 configureCppTarget(zlRenderer)
-target_link_libraries(zlRenderer PRIVATE glfw Vulkan::Vulkan)
+target_link_libraries(zlRenderer PRIVATE glfw Vulkan::Vulkan taskSystem)
 
 
 if(BUILD_TESTING)
@@ -88,11 +88,11 @@ if(BUILD_TESTING)
     add_test(NAME swapchain-selection COMMAND swapchainSelectionTests)
 
     # Fault injection is compiled only into this separate test executable.
-    add_executable(vulkanLifecycleTests ${rendererSources} tests/vulkanTestHooks.cpp)
+    add_executable(vulkanLifecycleTests ${rendererSources} tests/vulkanTestHooks.cpp tests/recordingTestHooks.cpp src/taskSystem.cpp)
     configureCppTarget(vulkanLifecycleTests)
     target_include_directories(vulkanLifecycleTests PRIVATE tests)
-    target_compile_definitions(vulkanLifecycleTests PRIVATE ZL_RENDERER_TESTING)
-    target_link_libraries(vulkanLifecycleTests PRIVATE glfw Vulkan::Vulkan)
+    target_compile_definitions(vulkanLifecycleTests PRIVATE ZL_RENDERER_TESTING ZL_TASK_SYSTEM_TESTING)
+    target_link_libraries(vulkanLifecycleTests PRIVATE glfw Vulkan::Vulkan Threads::Threads)
     foreach(testCase missing-layer missing-extension instance messenger surface no-device missing-swapchain missing-surface-usage create-device device diagnostic)
         add_test(NAME vulkan-${testCase} COMMAND ${CMAKE_COMMAND}
             "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
@@ -115,5 +115,40 @@ if(BUILD_TESTING)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyPresentation.cmake")
         set_tests_properties(presentation-${testCase} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
     endforeach()
+    foreach(workerCount 0 1 4)
+        foreach(groupCount 1 2 5)
+            add_test(NAME recording-${workerCount}-${groupCount} COMMAND ${CMAKE_COMMAND}
+                "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>" -DtestCase=normal
+                "-DworkerCount=${workerCount}" "-DgroupCount=${groupCount}" -Dcontrol=none
+                "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>/recording-${workerCount}-${groupCount}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyParallelRecording.cmake")
+            set_tests_properties(recording-${workerCount}-${groupCount} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+        endforeach()
+    endforeach()
+    foreach(control overlap reverse startup acceptance group-begin group-body group-end sibling nonstandard multiple gate-timeout)
+        add_test(NAME recording-${control} COMMAND ${CMAKE_COMMAND}
+            "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>" -DtestCase=normal
+            -DworkerCount=4 -DgroupCount=2 "-Dcontrol=${control}"
+            "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>/recording-${control}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyParallelRecording.cmake")
+        set_tests_properties(recording-${control} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endforeach()
+    foreach(testCase worker-pool worker-pool-later worker-primary-later double-rebuild double-rebuild-failure submit-later acquire-suboptimal acquire-timeout acquire-not-ready acquire-out-of-date present-suboptimal)
+        add_test(NAME recording-${testCase} COMMAND ${CMAKE_COMMAND}
+            "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>" "-DtestCase=${testCase}"
+            -DworkerCount=4 -DgroupCount=2 -Dcontrol=none
+            "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>/recording-${testCase}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verifyParallelRecording.cmake")
+        set_tests_properties(recording-${testCase} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endforeach()
+    add_test(NAME recording-reject-evidence COMMAND ${CMAKE_COMMAND}
+        "-DtestExecutable=$<TARGET_FILE:vulkanLifecycleTests>"
+        "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>/recording-reject-evidence"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/checkRecordingRejects.cmake")
+    set_tests_properties(recording-reject-evidence PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    add_test(NAME recording-compare-modes COMMAND ${CMAKE_COMMAND}
+        "-DlogDirectory=${CMAKE_BINARY_DIR}/test-logs/$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/checkRecordingModes.cmake")
+    set_tests_properties(recording-compare-modes PROPERTIES DEPENDS "recording-0-1;recording-0-2;recording-0-5;recording-1-1;recording-1-2;recording-1-5;recording-4-1;recording-4-2;recording-4-5")
 endif()
 endif()

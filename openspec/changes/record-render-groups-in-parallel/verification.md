@@ -110,6 +110,6 @@ recording-overlap 的在途事件及不同线程/池；recording-reject-evidence
 
 `openspec validate record-render-groups-in-parallel --strict` 通过；CLI 提示 MODIFIED 的前置要求尚不在主规格中。它们已存在于完成但未同步的 prepare-render-group-recording delta，后续必须先同步前置 change，再同步本 change；本次没有绕过或代为执行同步/归档。
 
-技术验收核对：5/5 要求、19/19 场景、6/6 设计决策已对应实现及上述分层证据。无实现范围缩减，未完成的仅为 Git 交付任务；独立 verify、主规格同步及归档未执行。
+技术验收核对：5/5 要求、19/19 场景、6/6 设计决策已对应实现及上述分层证据。无实现范围缩减，16/16 任务完成；独立 verify、主规格同步及归档未执行。
 
-交付目标已只读核实：origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main；开始交付前远端与基线 SHA 一致。最终验收、任务完成和 Git 同步结果将在实际完成后记录。
+交付目标已只读核实：origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main；开始交付前远端与基线 SHA 一致。实现提交 [51b95eb820186c4ddaeef42399dbd12755cfcd0c](https://github.com/BlackJoke76/ZLRenderer_v2/commit/51b95eb820186c4ddaeef42399dbd12755cfcd0c) 已推送至 origin/main，git ls-remote 确认远端 SHA 与该提交一致。任务完成勾选、STATUS 和本交付回执随独立 docs(record-render-groups-in-parallel) 提交保存，最终文档提交 SHA 见 Git 历史及本轮交付输出。既有未跟踪 .agents/ 与两个 .gitkeep 均保留。

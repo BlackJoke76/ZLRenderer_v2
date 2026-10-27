@@ -32,7 +32,7 @@
 
 - [x] 6.1 在新构建目录运行 Debug/Release 全部 CTest 及 CPU-only 隔离回归，运行可用 ASan/静态分析和可用 TSan/UBSan；汇总实际命令、测试数和日志，明确未运行工具及 ASan 不证明无数据竞争，不重复把 CPU 证据算作 GPU 验收。
 - [x] 6.2 对照全部 delta 要求/场景及设计决策完成 verification.md、更新 STATUS 和最终架构/使用说明，记录前置 change 状态和规格同步顺序；执行 openspec validate record-render-groups-in-parallel --strict 与 git diff --check，仅将有证据的任务标为完成。
-- [ ] 6.3 验收后核对 remote、branch、upstream 及相关文件范围，按项目授权以包含 record-render-groups-in-parallel 的独立提交交付并推送；核对远端 SHA，记录提交链接、分支、验证及推送结果，保留其他工作区改动；失败如实记载，不强推或切换分支。
+- [x] 6.3 验收后核对 remote、branch、upstream 及相关文件范围，按项目授权以包含 record-render-groups-in-parallel 的独立提交交付并推送；核对远端 SHA，记录提交链接、分支、验证及推送结果，保留其他工作区改动；失败如实记载，不强推或切换分支。
 
 ## Workflow follow-up
 

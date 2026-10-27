@@ -1,6 +1,6 @@
 # record-render-groups-in-parallel 实施验收
 
-本报告记录本次 apply 的实现与技术验收，不代替后续独立 openspec-verify-change。基线为 `0f09df95f591821970cceb8b59b6f35f505b9226`。仅本 change 的代码、测试、规划与文档纳入交付；前置 change 和主规格未同步/归档。
+下方实施验收保留 2026-10-27 apply 时记录；2026-10-28 的独立 openspec-verify-change 结果见本文末节。基线为 `0f09df95f591821970cceb8b59b6f35f505b9226`。仅本 change 的代码、测试、规划与文档纳入交付；前置 change 和主规格未同步/归档。
 
 ## 实现与设计核对
 
@@ -113,3 +113,103 @@ recording-overlap 的在途事件及不同线程/池；recording-reject-evidence
 技术验收核对：5/5 要求、19/19 场景、6/6 设计决策已对应实现及上述分层证据。无实现范围缩减，16/16 任务完成；独立 verify、主规格同步及归档未执行。
 
 交付目标已只读核实：origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main；开始交付前远端与基线 SHA 一致。实现提交 [51b95eb820186c4ddaeef42399dbd12755cfcd0c](https://github.com/BlackJoke76/ZLRenderer_v2/commit/51b95eb820186c4ddaeef42399dbd12755cfcd0c) 已推送至 origin/main，git ls-remote 确认远端 SHA 与该提交一致。任务完成勾选、STATUS 和本交付回执随独立 docs(record-render-groups-in-parallel) 提交保存，最终文档提交 SHA 见 Git 历史及本轮交付输出。既有未跟踪 .agents/ 与两个 .gitkeep 均保留。
+
+## 独立复核：2026-10-28
+
+复核对象为已推送的 `9a32dc9618eeebaec921373c2d15ed09298736af`（实现 `51b95eb820186c4ddaeef42399dbd12755cfcd0c`），两者之间 src/tests/scripts/CMakeLists.txt 无差异。本轮未修改产品、测试、规划、任务或主规格，仅追加本报告与 STATUS。任务勾选和 apply all_done 仅作为输入，以下结论来自重新阅读规划/源码/检查器、全新构建复跑及原始证据核验。
+
+### Summary scorecard
+
+| 维度 | 检查及结论 |
+|---|---|
+| Completeness | Task Completion 16/16；Spec Coverage 5/5（3 MODIFIED、2 ADDED；无 REMOVED/RENAMED） |
+| Correctness | Requirement Implementation Mapping 5/5；Scenario Coverage 19/19 |
+| Coherence | Design Adherence 6/6 决策；Code Pattern Consistency 通过 |
+
+六项适用检查均已完成，没有 Not verified、部分验证或跳过检查。环境不提供的 TSan/UBSan 和本轮未重复的 ASan/静态分析分别列入下方证据使用范围，未当作新运行或无数据竞争证明。
+
+### 新证据与已有证据复查
+
+| 检查 | 本轮结果与证据 |
+|---|---|
+| 新目录配置与构建 | build-parallel-verify Debug/Release 均无警告，保持 /W4 /WX；configure.log、build-Debug.log、build-Release.log。使用固定现有 GLFW 源码缓存，不宣称重新联网下载验收 |
+| 全部 CTest | Debug 137/137（89.51 秒）、Release 137/137（82.01 秒）；ctest-Debug.log、ctest-Release.log。包括真实录制门控、逆序完成、故障汇总、重建、跨模式比较、结果损坏和证据反例 |
+| CPU-only 新目录 | build-parallel-verify-cpu 两配置各 26/26（10.42/10.07 秒），关闭 renderer、禁用 Vulkan 查找并指定无效 GLFW 路径；无 _deps、无图形目标，正常库保持图形依赖隔离 |
+| 新真实窗口 | 6/6，明细见下表；每个至少持续 10 秒、9 代、三轮最小化恢复、25 点采样、正常条件 5 秒内退出，创建/释放平衡，无应用 validation/sync WARNING/ERROR |
+| 独立像素再核验 | audit_evidence.py 直接从 stdout 颜色及格式推导显示 RGB，再用 Pillow 重采样每张 PNG 的 25 点；原 17 流程加新 6 流程共 23 流程、207 张 PNG，全部通过，不只读取 verification.txt 的通过文字 |
+| 分配、录制与提交再核验 | 同脚本审查本轮 158 份包含命令资源的 stdout：原始分配键 (slot,worker,group) 对应真实录制池/primary；同 worker 线程身份稳定、不同 worker 线程互异，实际 submit index 对应组序；join 先于池释放，重建复位所有池再释放旧附件 |
+| 二进制隔离 | 新 Debug/Release 产品与正常 taskSystem.lib 均不含录制启动、门控、兄弟失败及 ZL_RECORDING 控制标识；测试目标使用单独编译的 hook 版本，普通库源码与合同未改动 |
+| 既有 ASan 证据 | 已读取 build-parallel/ctest-ASan-verified.log（137/137）、ctest-ASan-final-controls.log（12/12）、ASan 最终构建和窗口证据；核对 /fsanitize=address、/Zi、/DEBUG 配置。原全量后仅测试日志限流/后组控制调整，12项补测及最终 ASan 窗口覆盖这些调整。本轮未重跑 ASan |
+| 既有静态分析与工具限制 | 已核对 /analyze 配置及 analysis-build-final.log 无编译器警告/错误；本轮未重跑静态分析。MSVC 环境未发现可用 TSan/UBSan 工具链，未将其记为通过 |
+
+新证据根目录为 `build-parallel-verify/`；`run-verification.ps1` 保存主要复跑命令，窗口各目录包含 driver.log、stdout/stderr、PNG 和 verification.txt。`independent-audit.json` 保存上述独立审查结果；`verification-manifest.json` 记录复核 HEAD、源文件及新/复用证据 SHA256。诊断白名单重新核对，仍仅允许既有具体 AMD loader 与重复 EOS layer 消息，未扩大应用错误过滤。
+
+### 本轮窗口明细
+
+| 目录（相对 build-parallel-verify/window-logs） | 请求 worker | submitted / presented | 代数 |
+|---|---:|---:|---:|
+| Debug/alternate-single | 1 | 2431 / 2431 | 9 |
+| Debug/multi-double | 4 | 2448 / 2448 | 9 |
+| Debug/production | 0 | 2499 / 2499 | 9 |
+| Release/multi-double | 4 | 2338 / 2338 | 9 |
+| Release/multi-minimized | 4 | 2390 / 2390 | 9 |
+| Release/production | 0 | 2484 / 2484 | 9 |
+
+实际设备仍为 RX 7900 XT、graphics/present 同族 0、FIFO、format 50、三图像/两帧槽。多 worker 双组请求 4、实际 2；五组请求 4、实际 4 的调用/复用由 CTest 另验。MAILBOX/分族仍是合成策略/代码覆盖；采样绘制、GPU 并行、呈现引擎完成和净性能提升没有被本复核宣称。门控在真实 primary begin/end 区间产生受控 CPU 重叠，不等于同时执行两个 Vulkan API。
+
+### 要求映射
+
+| 要求 | 主要实现定位 | 验证 |
+|---|---|---|
+| Record complete physical groups into independent primaries | src/rhi.h:9、src/rhi.cpp:45；src/vulkanPresenter.cpp:286、363；src/taskSystem.cpp:47、75 | 0/1/4 worker × 1/2/5组、新单/双清屏窗口及完整 primary/组输入 |
+| Reuse group primaries with frame slot lifetime | src/vulkanPresenter.cpp:94、315、498、632、726、753 | 分配归属审计、多槽12帧、double-rebuild、窗口9代、pool/primary中途失败 |
+| Validate compiler and clear execution at distinct coverage levels | src/renderGraph.cpp；src/vulkanRenderGraph.cpp:144；src/vulkanPresenter.cpp:363、444 | 图编译/后端映射、跨模式参数比较、原17与新6窗口、同步validation，明确各层限制 |
+| Complete the recording batch before deciding frame submission | src/vulkanPresenter.cpp:326、338、349、444、548；src/vulkanRenderGraph.cpp:5；src/taskSystem.cpp:23、75 | 全批等待后校验与单次提交；标准/非标准/多异常、接受前失败、submit-later及十种无效结果 |
+| Verify actual recording overlap with bounded evidence | src/vulkanPresenter.cpp:391、438；tests/recordingTestHooks.cpp:77、103、127、134；tests/checkParallelEvidence.cmake | 真实录制 enter/exit事件、不同 worker/thread/pool、逆序完成、有界日志及损坏证据拒绝 |
+
+### 19 个场景逐项核对
+
+| 场景 | 对应代码/测试证据 | 结论 |
+|---|---|---|
+| Record two complete clear groups | recordRenderGroup；presentation-graph-double、recording-4-2及新多worker双清屏；实际两primary、WAW与唯一出口 | 通过 |
+| Keep a single group complete | recordRenderGroup；recording-0/1/4-1、新两配置产品窗口，完整入口/渲染/出口 | 通过 |
+| Select inline single and multiple workers | RhiConfig→initialize→TaskSystem::submitBatch；recording-0/1/4×1/2/5；纯CPU批次/线程归属测试 | 通过 |
+| Revisit a frame slot | renderFrame fence等待→recordGraphFrame reset全部本槽池；12帧循环与分配/提交归属审计 | 通过 |
+| Rebuild with several primaries per slot | rebuildSwapchain 全池reset；recording-double-rebuild及新双清屏9代窗口 | 通过 |
+| Skip without command or fence mutation | renderFrame在准备/录制前处理跳帧；超时、NOT_READY/OUT_OF_DATE、SUBOPTIMAL、零extent、最小化及关闭回归 | 通过 |
+| Use distinct pools concurrently | WorkerCommandResources[workerIndex].primary[groupIndex]；overlap实际不同池/线程，五组复用独立句柄 | 通过 |
+| Verify compiler cases without a GPU | renderGraphTests的RAW/WAR/WAW/读取者/内容/引用/组序；host-only后端映射测试 | 通过 |
+| Verify two clear passes on the GPU | graph-double A/B完整render pass输入；新Debug/Release双清屏25点B及同步诊断 | 通过 |
+| Preserve the presentation regression baseline | 原17与新6窗口包括两配置产品、替代色、持续10秒、9代、三轮恢复及最小化关闭 | 通过 |
+| Compare serial and parallel rendering | recording-compare-modes九种组合的实际barrier/附件/submit语义；原窗口完整0/1/多模式像素矩阵重新采样 | 通过 |
+| Finish in reverse order and submit in plan order | beforeRecordingTestEnd门控，recording-reverse确认order=1,0而真实数组仍0,1 | 通过 |
+| Wait for a sibling after recording fails | TaskBatchHandle::wait全批；recording-sibling/nonstandard/multiple事件收敛、摘要3帧及fence计数 | 通过 |
+| Reject incomplete recording results | collectRecordedGroupCommands；graph-recording十种损坏结果反例，调用在reset fence/submit之前 | 通过 |
+| Reject scheduling before acceptance | TaskSystem::submitBatch全批接受点；recording-acceptance在已有3帧后拒绝且无第4帧推进 | 通过 |
+| Fail submission after full recording | submitGraphFrame checkResult与hasSubmittedWork成功边界；recording-submit-later的3帧/4次reset及非零清理 | 通过 |
+| Overlap inside actual recording | 真实vkBegin之后/vkEnd之前RecordingTestScope，overlap最大在途2、gate-timeout有界失败并排空 | 通过 |
+| Check evidence without relying on log order | 独立事件序列与线程/池身份；recording-reject-evidence七种反例、graph-primary-evidence七种反例 | 通过 |
+| Report coverage and performance limits | 本报告与STATUS/ARCHITECTURE区分CPU、真实GPU、合成策略、控制注入及未测工具，不声称GPU并行/加速 | 通过 |
+
+### 六项设计决策与项目模式
+
+1. 显式 worker 配置、默认零、按组数限制：rhi.h:9 → rhi.cpp:45 → VulkanPresenter::initialize；执行器由 presenter 持有，普通库/应用与测试注入隔离，符合设计。
+2. 每槽每 worker 独占池，按组预分配 primary：createFrameResources 与 WorkerCommandResources，稳定 `(slot,worker,group)` 归属；复用用集合身份判断，未把组跨帧换 worker 误判为重新分配，符合设计。
+3. 一条录制函数、隔离结果：recordGraphFrame 固定快照和结果存储后提交任务，每个回调只写自身元素；所有模式调用 recordRenderGroup。submitBatch 后紧接 wait，没有插入可抛出的协调工作；回调失败由 TaskSystem 捕获并等待全部捕获释放，符合设计。
+4. 全批成功后一次有序提交：结果校验、trace拼接都在reset fence之前，orderedCommands按groupIndex构造；worker无queue/present/frame推进调用，原WAW和出口不变，符合设计。
+5. 回收先CPU再GPU再解除引用：shutdown排空join后waitForSubmissions，再释放池和附件；rebuild为同步帧入口，无CPU批次跨帧在途，GPU等待后复位全部池，符合设计。
+6. 分层证据：真实录制内门控、独立enter/exit事件、按组汇总trace、实际submit与像素分别检查；控制由协调线程一次解析，测试共享门控使用mutex/CV；证据反例、新复跑和像素再采样均通过，符合设计。
+
+Code Pattern Consistency：实现范围与29文件交付范围核对，新增函数/变量使用lowerCamelCase，资源名称表达pool/primary/frame角色；原有准备/映射、TaskSystem和recordRenderGroup被复用，未复制串并行录制或提交路径。对象在初始化阶段预分配，稳定帧无新增Vulkan对象/WaitIdle，未引入secondary、额外队列、通用调度器、采样绘制或计划热替换。测试单独编译，代码所有权与项目既有presenter清理方式一致。无显著模式偏离。
+
+### Issues by priority
+
+- CRITICAL：0。
+- WARNING：0。
+- SUGGESTION：0。
+
+### Final assessment 与后续边界
+
+六项检查全部通过，实现独立复核通过，无未验证检查。可进入后续规格同步/归档流程，但必须沿已声明顺序先同步 prepare-render-group-recording，再同步本 change。CLI strict validate通过后输出的“MODIFIED header not found”提示，源于前置delta的两个要求尚未进入主规格；本轮已经定位前置delta第46、74行确认该依赖，不将它误判为缺失实现，也不绕过归档检查。未同步或归档任何 change。
+
+复核前已确认 origin=https://github.com/BlackJoke76/ZLRenderer_v2.git，main / origin/main，远端与复核对象9a32dc9一致。复核结果仅更新本报告及交接记录，按已有项目授权保存为独立文档提交；最终提交SHA和远端同步结果见Git历史及本轮交付输出。既有未跟踪 .agents/ 与两个 .gitkeep 保持。

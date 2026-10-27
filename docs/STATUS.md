@@ -1,5 +1,11 @@
 # 实际进度
 
+2026-10-28，`openspec-verify-change` 独立复核 `record-render-groups-in-parallel` 通过：[完整报告](../openspec/changes/record-render-groups-in-parallel/verification.md#独立复核2026-10-28)。Task Completion 16/16、Spec Coverage/实现映射5/5、场景19/19、设计6/6及代码模式核对通过；六项适用检查全部执行，0 critical / warning / suggestion，无未验证或跳过检查。复核基线为已推送9a32dc9618eeebaec921373c2d15ed09298736af（实现51b95eb）；本轮未修改产品或测试代码。
+
+全新build-parallel-verify Debug/Release无警告构建，各137/137 CTest（89.51/82.01秒）；新CPU-only目录禁用图形依赖，两配置各26/26（10.42/10.07秒）。新6个真实窗口流程均通过：两配置默认产品、Debug替代色单worker、两配置多worker双清屏、Release多worker最小化关闭；分别2499、2484、2431、2448、2338、2390帧，均9代、至少10秒、25点、三轮恢复和正常条件5秒内退出。独立脚本对原17加新6流程共207张PNG重新按实际颜色/格式计算显示值并采样，全部通过；158份本轮日志的原始分配→实际录制→实际submit归属、线程稳定性与清理时序另行核对。新日志/PNG、审查JSON和SHA256清单在build-parallel-verify。
+
+本轮复查已有ASan 137/137与最终12/12补测、ASan窗口、/analyze无警告及其实际配置，未重复运行ASan/静态分析；MSVC未发现可用TSan/UBSan，不将这些未运行项当作通过或数据竞争证明。硬件仍RX7900XT、同族0、FIFO、format50、3图像/2帧槽；受控CPU重叠、真实GPU清屏、合成MAILBOX/分族、故障注入与基础WSI限制保持区分。strict校验通过；后续仍须先同步prepare-render-group-recording再同步本change。本轮只保存复核报告和交接，不同步/归档；文档提交与远端SHA以本轮交付结果为准，既有.agents/和两个.gitkeep保留。
+
 2026-10-27，`record-render-groups-in-parallel` 实施技术验收通过，16/16 任务完成，已提交推送 main。[完整验收报告](../openspec/changes/record-render-groups-in-parallel/verification.md) 对应 5 条要求、19 个场景和 6 项设计决策。RhiConfig 显式配置 0/1/多 worker，默认零内联；复用 TaskSystem 和同一 recordRenderGroup。每帧槽每 worker 独占池及预分配 primary，整批结束后校验结果、按计划组序一次提交；任务异常、缺失/重复/未完成结果均阻止半帧提交，先收敛 CPU 使用者再清理。
 
 新 build-parallel Debug/Release 各 137/137 CTest（79.24/78.77 秒），ASan Release 137/137（351.45 秒）；最终有界日志及后组控制补测三配置各 12/12。CPU-only Debug/Release 各 26/26，在禁用 Vulkan 查找、无效 GLFW 路径、无 _deps 条件下通过。/analyze 全部目标无警告；普通产品/任务库不包含测试控制。17/17 真实窗口流程通过：两配置 0/1/4 请求 worker × 单/双清屏、两配置多 worker 最小化关闭、默认产品、替代色与 ASan 多 worker 双清屏；均至少 10 秒、9 代、25 点、三轮最小化恢复、正常条件五秒内退出，资源平衡且无应用 validation/sync WARNING/ERROR。实际线程重叠用真实 primary begin/end 区间的门控、进入/退出事件及不同 worker/thread/pool 证明；逆序完成仍按计划提交，损坏证据拒绝，故障测试明确属于控制覆盖。

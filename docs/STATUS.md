@@ -1,10 +1,16 @@
 # 实际进度
 
-2026-10-26，`openspec-verify-change add-recording-task-system` 独立复核通过：[完整复核](../openspec/changes/add-recording-task-system/verification.md)。完整性15/15任务与6/6新增要求；正确性6/6实现映射、19/19场景；一致性7/7设计决策及代码模式通过。六项适用检查均执行，0 critical / warning / suggestion，无跳过检查。本轮未修改产品/测试代码，未同步主规格或归档。
+2026-10-27，`add-recording-task-system` 已同步主规格并归档（spec-driven）：目录为 `openspec/changes/archive/2026-10-27-add-recording-task-system/`，[完整验收与独立复核](../openspec/changes/archive/2026-10-27-add-recording-task-system/verification.md)。归档前4/4规划材料、15/15任务完成，2026-10-26独立复核0 critical/warning/suggestion。新增 `openspec/specs/cpu-task-execution/spec.md`，Purpose、6条要求和19个场景与归档delta逐项完全一致，仅转换标题与Requirements章节；其余5份主规格SHA256不变。
+
+归档6个文件（含.openspec.yaml）移动前后SHA256逐一一致，校验清单保存在忽略目录 `build-task-system-verify/archive-manifest-20261027.json`。全部6份主规格和6个归档change任务记录严格校验通过；当前只保留另一个已完成但未归档的 `prepare-render-group-recording`，未修改其记录。本轮仅同步规格、归档和更新交接/路线图，未改产品代码或重新运行构建/GPU测试；此前复核数据和工具限制仍有效。
+
+本归档以独立提交推送至已核实的 origin/main（upstream origin/main，https://github.com/BlackJoke76/ZLRenderer_v2.git），最终SHA及远端核对结果见本轮交付输出。既有未跟踪.agents/与两个.gitkeep保留。下方实施及复核段落保留当时状态，当前状态以本段为准。
+
+2026-10-26，`openspec-verify-change add-recording-task-system` 独立复核通过：[完整复核](../openspec/changes/archive/2026-10-27-add-recording-task-system/verification.md)。完整性15/15任务与6/6新增要求；正确性6/6实现映射、19/19场景；一致性7/7设计决策及代码模式通过。六项适用检查均执行，0 critical / warning / suggestion，无跳过检查。本轮未修改产品/测试代码，未同步主规格或归档。
 
 全新build-task-system-verify CPU-only目录在图形查找/下载禁用条件下Debug/Release各26/26（10.12/10.03秒），新ASan目录26/26（10.66秒），新/analyze与BUILD_TESTING=OFF仅库构建通过。默认图形配置Debug/Release各104/104（58.21/54.09秒）。每模式关键案例各100轮，目标/链接无图形依赖、无_deps及正常库无测试钩子均重新核对。新日志位于build-task-system-verify*，旧实施证据另保留。TSan/UBSan及像素窗口流程未运行的既定限制保持，不把CPU证据当作Vulkan并行录制或GPU完成证明。复核基线75dc398、实现6994f04；本次仅提交复核报告和交接，目标为已核实origin/main，最终提交与推送SHA见交付输出。
 
-2026-10-26，`add-recording-task-system` 纯CPU任务执行器实施及技术验收完成，当前活动change未同步主规格或归档。[验收报告](../openspec/changes/add-recording-task-system/verification.md) 逐项关联19个场景、测试与证据。TaskSystem提供任务批次、零worker内联/固定worker执行、稳定worker索引、完成句柄、按任务索引保留异常、等待全批、排空关闭及析构；句柄丢弃不取消工作，保留句柄可跨执行器生命周期。一个协调线程提交/关闭，回调不重入同执行器控制接口，任务必须最终终结，不提供取消或任务依赖图。
+2026-10-26，`add-recording-task-system` 纯CPU任务执行器实施及技术验收完成，当前活动change未同步主规格或归档。[验收报告](../openspec/changes/archive/2026-10-27-add-recording-task-system/verification.md) 逐项关联19个场景、测试与证据。TaskSystem提供任务批次、零worker内联/固定worker执行、稳定worker索引、完成句柄、按任务索引保留异常、等待全批、排空关闭及析构；句柄丢弃不取消工作，保留句柄可跨执行器生命周期。一个协调线程提交/关闭，回调不重入同执行器控制接口，任务必须最终终结，不提供取消或任务依赖图。
 
 独立新目录 `build-task-system` 在禁用Vulkan查找、图形下载断开、GLFW源无效的控制条件下配置成功；CPU目标与测试不引用/链接Vulkan/GLFW/RenderGraph，无_deps，关闭测试时仅构建任务库。CPU Debug/Release各26/26（9.94/9.86秒），ASan Release 26/26（10.83秒），库和两测试目标/analyze无警告；0/1/4 worker的关键等待/批次/丢句柄/异常/关闭各100轮。四worker门控证明4个真实线程同时在途及后续索引稳定；创建第0/1/3个worker前与批次接受前故障注入只证明host控制和已启动线程回收，不宣称OS/分配器自然失败。正常库二进制不包含测试钩子。
 
